@@ -1,3 +1,8 @@
+2007-07-13  David Smith  <dsmith@redhat.com>
+
+	* systemtap.samples/args.exp: No longer necessary to use "sudo" to
+	run staprun.
+
 2007-07-12  David Smith  <dsmith@redhat.com>
 
 	* systemtap.maps/pmap_agg_overflow.exp: On single processor
