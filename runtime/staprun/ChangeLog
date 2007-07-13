@@ -1,3 +1,14 @@
+2007-07-13  David Smith  <dsmith@redhat.com>
+
+	* mainloop.c: Moved code to be shared by staprun and staprun_io to
+	common.c
+	* common.c: New file.
+	* common.h: New file.
+	* staprun_io.c: New file containing user-level portion of
+	staprun.
+	* staprun.c: Moved code to common.c and added new code to handle
+	setuid operation.
+
 2007-07-09  David Smith  <dsmith@redhat.com>
 
 	* relay.c (init_relayfs): Fixed a buffer size bug introduced by

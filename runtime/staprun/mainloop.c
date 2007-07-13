@@ -11,22 +11,12 @@
  */
 
 #include "staprun.h"
+#include "common.h"
 
 /* globals */
 int control_channel = 0;
 int ncpus;
 int use_old_transport = 0;
-
-#define ERR_MSG "\nUNEXPECTED FATAL ERROR in staprun. Please file a bug report.\n"
-void fatal_handler (int signum)
-{
-        int rc;
-        char *str = strsignal(signum);
-        rc = write (STDERR_FILENO, ERR_MSG, sizeof(ERR_MSG));
-        rc = write (STDERR_FILENO, str, strlen(str));
-        rc = write (STDERR_FILENO, "\n", 1);
-        _exit(-1);
-}
 
 static void sigproc(int signum)
 {
@@ -59,37 +49,6 @@ static void setup_main_signals(int cleanup)
 	sigaction(SIGHUP, &a, NULL);
 	sigaction(SIGQUIT, &a, NULL);
 }
-
-void setup_signals(void)
-{
-	sigset_t s;
-	struct sigaction a;
-
-	/* blocking all signals while we set things up */
-	sigfillset(&s);
-	pthread_sigmask(SIG_SETMASK, &s, NULL);
-
-	/* set some of them to be ignored */
-	memset(&a, 0, sizeof(a));
-	sigfillset(&a.sa_mask);
-	a.sa_handler = SIG_IGN;
-	sigaction(SIGPIPE, &a, NULL);
-	sigaction(SIGUSR2, &a, NULL);
-
-	/* for serious errors, handle them in fatal_handler */
-	a.sa_handler = fatal_handler;
-	sigaction(SIGBUS, &a, NULL);
-	sigaction(SIGFPE, &a, NULL);
-	sigaction(SIGILL, &a, NULL);
-	sigaction(SIGSEGV, &a, NULL);
-	sigaction(SIGXCPU, &a, NULL);
-	sigaction(SIGXFSZ, &a, NULL);
-
-	/* unblock all signals */
-	sigemptyset(&s);
-	pthread_sigmask(SIG_SETMASK, &s, NULL);
-}
-
 
 /**
  *	send_request - send request to kernel over control channel
@@ -136,12 +95,6 @@ void start_cmd(void)
 	} else if (pid == 0) {
 		int signum;
 
-		if (setregid(cmd_gid, cmd_gid) < 0) {
-			perror("setregid");
-		}
-		if (setreuid(cmd_uid, cmd_uid) < 0) {
-			perror("setreuid");
-		}
 		/* wait here until signaled */
 		sigwait(&usrset, &signum);
 
@@ -179,23 +132,6 @@ void system_cmd(char *cmd)
 	}
 }
 
-
-/* stp_check script */
-#ifdef PKGLIBDIR
-char *stp_check=PKGLIBDIR "/stp_check";
-#else
-char *stp_check="stp_check";
-#endif
-
-static int run_stp_check (void)
-{
-	int ret ;
-	/* run the _stp_check script */
-	dbug(2, "executing %s\n", stp_check);
-	ret = system(stp_check);
-	return ret;
-}
-
 /**
  *	init_stp - initialize the app
  *	@print_summary: boolean, print summary or not at end of run
@@ -204,18 +140,16 @@ static int run_stp_check (void)
  */
 int init_staprun(void)
 {
-	char bufcmd[128];
-	int rstatus;
-	int pid;
+	dbug(2, "init_staprun\n");
 
-	if (system(VERSION_CMD)) {
-		dbug(2, "Using OLD TRANSPORT\n");
-		use_old_transport = 1;
-	}
+	use_old_transport = using_old_transport();
 
 	if (attach_mod) {
-		if (init_ctl_channel() < 0)
+		dbug(2, "Attaching\n");
+		if (init_ctl_channel() < 0) {
+			err("Failed to initialize control channel.\n");
 			return -1;
+		}
 		if (use_old_transport) {
 			if (init_oldrelayfs() < 0) {
 				close_ctl_channel();
@@ -230,36 +164,10 @@ int init_staprun(void)
 		return 0;
 	}
 
-	if (run_stp_check() < 0)
-		return -1;
-
-	/* insert module */
-	sprintf(bufcmd, "_stp_bufsize=%d", buffer_size);
-        modoptions[0] = "insmod";
-        modoptions[1] = modpath;
-        modoptions[2] = bufcmd;
-        /* modoptions[3...N] set by command line parser. */
-
-	if ((pid = fork()) < 0) {
-		perror ("fork");
-		exit(-1);
-	} else if (pid == 0) {
-		if (execvp("/sbin/insmod",  modoptions) < 0)
-			_exit(-1);
-	}
-	if (waitpid(pid, &rstatus, 0) < 0) {
-		perror("waitpid");
-		exit(-1);
-	}
-	if (WIFEXITED(rstatus) && WEXITSTATUS(rstatus)) {
-		fprintf(stderr, "ERROR, couldn't insmod probe module %s\n", modpath);
-		return -1;
-	}
-	
 	/* create control channel */
 	if (init_ctl_channel() < 0) {
 		err("Failed to initialize control channel.\n");
-		goto exit1;
+		return -1;
 	}
 
 	/* fork target_cmd if requested. */
@@ -268,19 +176,10 @@ int init_staprun(void)
 		start_cmd();
 
 	return 0;
-
-exit1:
-	snprintf(bufcmd, sizeof(bufcmd), "/sbin/rmmod -w %s", modname);
-	if (system(bufcmd))
-		fprintf(stderr, "ERROR: couldn't rmmod probe module %s.\n", modname);
-	return -1;
 }
-
-
 
 void cleanup_and_exit (int closed)
 {
-	char tmpbuf[128];
 	pid_t err;
 	static int exiting = 0;
 
@@ -306,21 +205,13 @@ void cleanup_and_exit (int closed)
 	dbug(1, "closing control channel\n");
 	close_ctl_channel();
 
-	if (closed == 0) {
-		dbug(1, "removing module\n");
-		snprintf(tmpbuf, sizeof(tmpbuf), "/sbin/rmmod -w %s", modname);
-		if (system(tmpbuf)) {
-			fprintf(stderr, "ERROR: couldn't rmmod probe module %s.\n", modname);
-			exit(1);
-		}
-	} else if (closed == 2) {
+	if (closed == 2) {
 		fprintf(stderr, "\nDisconnecting from systemtap module.\n");
 		fprintf(stderr, "To reconnect, type \"staprun -A %s\"\n", modname); 
 	}
 
-	exit(0);
+	exit(closed);
 }
-
 
 /**
  *	stp_main_loop - loop forever reading data
