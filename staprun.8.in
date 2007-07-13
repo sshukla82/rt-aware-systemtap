@@ -23,9 +23,6 @@ program is the back-end to the Systemtap tool.  It expects a kernel
 module produced by the front-end
 .I stap
 tool.
-The
-.I staprun
-program must be run as root.
 .PP
 Splitting the systemtap tool into a front-end and a back-end allows a
 user to compile a systemtap script on a development machine that has
@@ -52,9 +49,6 @@ The '_stp_target' variable will be set to PID.
 .B \-o FILE
 Send output to FILE. If the module uses bulk mode, the output will
 be in percpu files FILE_x where 'x' is the cpu number.
-.TP
-.B \-u USERNAME
-Run commands as USERNAME. Used with the \-c option.
 .TP
 .B \-b BUFFER_SIZE
 The systemtap module will specify a buffer size.

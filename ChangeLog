@@ -1,3 +1,15 @@
+2007-07-13  David Smith  <dsmith@redhat.com>
+
+	* .cvsignore: Added staprun_io and stap_merge.
+	* Makefile.am: Added staprun_io program.  Changed source file list
+	for staprun.  Staprun is now setuid.
+	* Makefile.in: Regenerated.
+	* buildrun.cxx (run_pass): No longer runs staprun with "sudo".
+	* staprun.8.in: Removed reference to staprun needing to be run as
+	root.  Removed reference to removed '-u USERNAME' option.
+	* systemtap.spec.in: Added %pre script to create new groups.
+	staprun is no setuid.
+
 2007-07-11  William Cohen  <wcohen@redhat.com>
 
 	* systemtap.spec.in: Make sqlite support selectable.

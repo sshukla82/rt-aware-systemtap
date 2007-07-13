@@ -51,15 +51,25 @@ install-elfutils:
 install-exec-local: install-elfutils
 endif
 
-staprun_SOURCES = runtime/staprun/staprun.c runtime/staprun/mainloop.c \
+staprun_SOURCES = runtime/staprun/staprun.c runtime/staprun/common.c
+
+staprun_CPPFLAGS = $(AM_CPPFLAGS) -DSINGLE_THREADED
+staprun_CFLAGS = @PROCFLAGS@ $(AM_CFLAGS)
+
+staprun_io_SOURCES = runtime/staprun/staprun_io.c \
+	runtime/staprun/mainloop.c runtime/staprun/common.c \
 	runtime/staprun/symbols.c runtime/staprun/ctl.c \
 	runtime/staprun/relay.c runtime/staprun/relay_old.c
 
-staprun_CFLAGS = @PROCFLAGS@ $(AM_CFLAGS)
-staprun_LDADD = @PROCFLAGS@ -lpthread
+staprun_io_CFLAGS = @PROCFLAGS@ $(AM_CFLAGS)
+staprun_io_LDADD = @PROCFLAGS@ -lpthread
+
+install-exec-hook:
+	chmod 04111 "$(DESTDIR)$(bindir)/staprun"
 
 pkglibexec_SCRIPTS = stp_check
-CLEANFILES += $(pkglibexec_SCRIPTS)
+pkglibexec_PROGRAMS = staprun_io
+CLEANFILES += $(pkglibexec_SCRIPTS) $(pkglibexec_PROGRAMS)
 
 noinst_PROGRAMS = loc2c-test stap_merge
 loc2c_test_SOURCES = loc2c-test.c loc2c.c

@@ -140,6 +140,12 @@ make check %{?elfutils_mflags} || :
 %clean
 rm -rf ${RPM_BUILD_ROOT}
 
+%pre
+if [ $1 -eq 1 ]; then
+    groupadd -r stapdev >/dev/null 2>&1 || :
+    groupadd -r stapusr >/dev/null 2>&1 || :
+fi
+
 %files
 %defattr(-,root,root)
 
@@ -161,7 +167,7 @@ rm -rf ${RPM_BUILD_ROOT}
 
 %files runtime
 %defattr(-,root,root)
-%{_bindir}/staprun
+%attr(4111,root,root) %{_bindir}/staprun
 %{_libexecdir}/systemtap
 %{_mandir}/man8/*
 
