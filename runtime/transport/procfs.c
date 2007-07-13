@@ -378,7 +378,7 @@ static int _stp_register_ctl_channel (void)
 	/* now for each cpu "n", create /proc/systemtap/module_name/n  */
 	for_each_cpu(i) {
 		sprintf(buf, "%d", i);
-		de = create_proc_entry (buf, S_IFREG|S_IRUSR, _stp_proc_mod);
+		de = create_proc_entry (buf, 0600, _stp_proc_mod);
 		if (de == NULL) 
 			goto err1;
 		de->proc_fops = &_stp_proc_fops;
@@ -393,7 +393,7 @@ static int _stp_register_ctl_channel (void)
 #endif /* STP_BULKMODE */
 
 	/* finally create /proc/systemtap/module_name/cmd  */
-	de = create_proc_entry ("cmd", S_IFREG|S_IRUSR|S_IWUSR, _stp_proc_mod);
+	de = create_proc_entry ("cmd", 0666, _stp_proc_mod);
 	if (de == NULL) 
 		goto err1;
 	de->proc_fops = &_stp_proc_fops_cmd;

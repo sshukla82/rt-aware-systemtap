@@ -1,3 +1,9 @@
+2007-07-13  David Smith  <dsmith@redhat.com>
+
+	* control.c (_stp_register_ctl_channel): Change 'cmd' file
+	permissions (to allow unprivileged user to read/write).
+	* procfs.c (_stp_register_ctl_channel): Ditto.
+
 2007-07-09  Martin Hunt  <hunt@redhat.com>
 
 	* symbols.c (_stp_ins_module): Check for overflow of
