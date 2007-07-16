@@ -393,7 +393,7 @@ static int _stp_register_ctl_channel (void)
 #endif /* STP_BULKMODE */
 
 	/* finally create /proc/systemtap/module_name/cmd  */
-	de = create_proc_entry ("cmd", 0666, _stp_proc_mod);
+	de = create_proc_entry ("cmd", 0600, _stp_proc_mod);
 	if (de == NULL) 
 		goto err1;
 	de->proc_fops = &_stp_proc_fops_cmd;
