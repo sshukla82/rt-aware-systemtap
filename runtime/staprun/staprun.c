@@ -143,6 +143,32 @@ run_staprun_io(char **argv)
 }
 
 static int
+setup_ctl_channel(int setup)
+{
+	char buf[PATH_MAX];
+	struct statfs st;
+	uid_t uid = 0;
+	gid_t gid = 0;
+
+	if (setup) {
+		uid = cmd_uid;
+		gid = cmd_gid;
+	}
+
+ 	if (statfs("/sys/kernel/debug", &st) == 0
+	    && (int) st.f_type == (int) DEBUGFS_MAGIC)
+ 		sprintf (buf, "/sys/kernel/debug/systemtap/%s/cmd", modname);
+	else
+		sprintf (buf, "/proc/systemtap/%s/cmd", modname);
+	dbug(2, "attempting to chown %s\n", buf);
+	if (chown(buf, uid, gid) < 0) {
+		perror("chown");
+		return -1;
+	}
+	return 0;
+}
+
+static int
 setup_relayfs(int setup)
 {
 	int i;
@@ -247,6 +273,9 @@ init_staprun(void)
 		}
 	}
 
+	if (setup_ctl_channel(1) < 0)
+		return -1;
+
 	use_old_transport = using_old_transport();
 	if (use_old_transport) {
 		if (setup_oldrelayfs(1) < 0)
@@ -275,6 +304,8 @@ cleanup(int rc)
 		}
 	}
 	else {
+		setup_ctl_channel(0);
+
 		use_old_transport = using_old_transport();
 		if (use_old_transport)
 			setup_oldrelayfs(0);

@@ -1,3 +1,10 @@
+2007-07-16  David Smith  <dsmith@redhat.com>
+
+	* staprun.c (setup_ctl_channel): New function to change ownership
+	on the 'cmd' file.
+	(init_staprun): Calls setup_ctl_channel().
+	(cleanup): Calls setup_ctl_channel().
+
 2007-07-13  David Smith  <dsmith@redhat.com>
 
 	* mainloop.c: Moved code to be shared by staprun and staprun_io to
