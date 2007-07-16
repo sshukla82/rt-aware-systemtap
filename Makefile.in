@@ -40,7 +40,7 @@ bin_PROGRAMS = stap$(EXEEXT) staprun$(EXEEXT)
 
 @BUILD_ELFUTILS_TRUE@am__append_3 = stamp-elfutils
 @BUILD_ELFUTILS_FALSE@stap_DEPENDENCIES =
-pkglibexec_PROGRAMS = staprun_io$(EXEEXT)
+pkglibexec_PROGRAMS = stapio$(EXEEXT)
 noinst_PROGRAMS = loc2c-test$(EXEEXT) stap_merge$(EXEEXT)
 @BUILD_LKET_B2A_TRUE@am__append_4 = runtime/lket/b2a
 subdir = .
@@ -109,20 +109,20 @@ stap_merge_LDADD = $(LDADD)
 stap_merge_DEPENDENCIES =
 stap_merge_LINK = $(CCLD) $(stap_merge_CFLAGS) $(CFLAGS) $(AM_LDFLAGS) \
 	$(LDFLAGS) -o $@
+am_stapio_OBJECTS = stapio-stapio.$(OBJEXT) stapio-mainloop.$(OBJEXT) \
+	stapio-common.$(OBJEXT) stapio-symbols.$(OBJEXT) \
+	stapio-ctl.$(OBJEXT) stapio-relay.$(OBJEXT) \
+	stapio-relay_old.$(OBJEXT)
+stapio_OBJECTS = $(am_stapio_OBJECTS)
+stapio_DEPENDENCIES =
+stapio_LINK = $(CCLD) $(stapio_CFLAGS) $(CFLAGS) $(AM_LDFLAGS) \
+	$(LDFLAGS) -o $@
 am_staprun_OBJECTS = staprun-staprun.$(OBJEXT) \
 	staprun-common.$(OBJEXT)
 staprun_OBJECTS = $(am_staprun_OBJECTS)
 staprun_LDADD = $(LDADD)
 staprun_DEPENDENCIES =
 staprun_LINK = $(CCLD) $(staprun_CFLAGS) $(CFLAGS) $(AM_LDFLAGS) \
-	$(LDFLAGS) -o $@
-am_staprun_io_OBJECTS = staprun_io-staprun_io.$(OBJEXT) \
-	staprun_io-mainloop.$(OBJEXT) staprun_io-common.$(OBJEXT) \
-	staprun_io-symbols.$(OBJEXT) staprun_io-ctl.$(OBJEXT) \
-	staprun_io-relay.$(OBJEXT) staprun_io-relay_old.$(OBJEXT)
-staprun_io_OBJECTS = $(am_staprun_io_OBJECTS)
-staprun_io_DEPENDENCIES =
-staprun_io_LINK = $(CCLD) $(staprun_io_CFLAGS) $(CFLAGS) $(AM_LDFLAGS) \
 	$(LDFLAGS) -o $@
 pkglibexecSCRIPT_INSTALL = $(INSTALL_SCRIPT)
 SCRIPTS = $(pkglibexec_SCRIPTS)
@@ -139,9 +139,9 @@ CXXLD = $(CXX)
 CXXLINK = $(CXXLD) $(AM_CXXFLAGS) $(CXXFLAGS) $(AM_LDFLAGS) $(LDFLAGS) \
 	-o $@
 SOURCES = $(loc2c_test_SOURCES) $(stap_SOURCES) $(stap_merge_SOURCES) \
-	$(staprun_SOURCES) $(staprun_io_SOURCES)
+	$(stapio_SOURCES) $(staprun_SOURCES)
 DIST_SOURCES = $(loc2c_test_SOURCES) $(stap_SOURCES) \
-	$(stap_merge_SOURCES) $(staprun_SOURCES) $(staprun_io_SOURCES)
+	$(stap_merge_SOURCES) $(stapio_SOURCES) $(staprun_SOURCES)
 RECURSIVE_TARGETS = all-recursive check-recursive dvi-recursive \
 	html-recursive info-recursive install-data-recursive \
 	install-dvi-recursive install-exec-recursive \
@@ -294,13 +294,13 @@ CLEANFILES = $(am__append_3) $(pkglibexec_SCRIPTS) \
 staprun_SOURCES = runtime/staprun/staprun.c runtime/staprun/common.c
 staprun_CPPFLAGS = $(AM_CPPFLAGS) -DSINGLE_THREADED
 staprun_CFLAGS = @PROCFLAGS@ $(AM_CFLAGS)
-staprun_io_SOURCES = runtime/staprun/staprun_io.c \
+stapio_SOURCES = runtime/staprun/stapio.c \
 	runtime/staprun/mainloop.c runtime/staprun/common.c \
 	runtime/staprun/symbols.c runtime/staprun/ctl.c \
 	runtime/staprun/relay.c runtime/staprun/relay_old.c
 
-staprun_io_CFLAGS = @PROCFLAGS@ $(AM_CFLAGS)
-staprun_io_LDADD = @PROCFLAGS@ -lpthread
+stapio_CFLAGS = @PROCFLAGS@ $(AM_CFLAGS)
+stapio_LDADD = @PROCFLAGS@ -lpthread
 pkglibexec_SCRIPTS = stp_check
 loc2c_test_SOURCES = loc2c-test.c loc2c.c
 loc2c_test_CPPFLAGS = $(stap_CPPFLAGS)
@@ -486,12 +486,12 @@ stap$(EXEEXT): $(stap_OBJECTS) $(stap_DEPENDENCIES)
 stap_merge$(EXEEXT): $(stap_merge_OBJECTS) $(stap_merge_DEPENDENCIES) 
 	@rm -f stap_merge$(EXEEXT)
 	$(stap_merge_LINK) $(stap_merge_OBJECTS) $(stap_merge_LDADD) $(LIBS)
+stapio$(EXEEXT): $(stapio_OBJECTS) $(stapio_DEPENDENCIES) 
+	@rm -f stapio$(EXEEXT)
+	$(stapio_LINK) $(stapio_OBJECTS) $(stapio_LDADD) $(LIBS)
 staprun$(EXEEXT): $(staprun_OBJECTS) $(staprun_DEPENDENCIES) 
 	@rm -f staprun$(EXEEXT)
 	$(staprun_LINK) $(staprun_OBJECTS) $(staprun_LDADD) $(LIBS)
-staprun_io$(EXEEXT): $(staprun_io_OBJECTS) $(staprun_io_DEPENDENCIES) 
-	@rm -f staprun_io$(EXEEXT)
-	$(staprun_io_LINK) $(staprun_io_OBJECTS) $(staprun_io_LDADD) $(LIBS)
 install-pkglibexecSCRIPTS: $(pkglibexec_SCRIPTS)
 	@$(NORMAL_INSTALL)
 	test -z "$(pkglibexecdir)" || $(MKDIR_P) "$(DESTDIR)$(pkglibexecdir)"
@@ -534,15 +534,15 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/stap-translate.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/stap-util.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/stap_merge-stap_merge.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/stapio-common.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/stapio-ctl.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/stapio-mainloop.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/stapio-relay.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/stapio-relay_old.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/stapio-stapio.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/stapio-symbols.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/staprun-common.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/staprun-staprun.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/staprun_io-common.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/staprun_io-ctl.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/staprun_io-mainloop.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/staprun_io-relay.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/staprun_io-relay_old.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/staprun_io-staprun_io.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/staprun_io-symbols.Po@am__quote@
 
 .c.o:
 @am__fastdepCC_TRUE@	$(COMPILE) -MT $@ -MD -MP -MF $(DEPDIR)/$*.Tpo -c -o $@ $<
@@ -628,6 +628,104 @@ stap_merge-stap_merge.obj: runtime/staprun/stap_merge.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(stap_merge_CFLAGS) $(CFLAGS) -c -o stap_merge-stap_merge.obj `if test -f 'runtime/staprun/stap_merge.c'; then $(CYGPATH_W) 'runtime/staprun/stap_merge.c'; else $(CYGPATH_W) '$(srcdir)/runtime/staprun/stap_merge.c'; fi`
 
+stapio-stapio.o: runtime/staprun/stapio.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(stapio_CFLAGS) $(CFLAGS) -MT stapio-stapio.o -MD -MP -MF $(DEPDIR)/stapio-stapio.Tpo -c -o stapio-stapio.o `test -f 'runtime/staprun/stapio.c' || echo '$(srcdir)/'`runtime/staprun/stapio.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/stapio-stapio.Tpo $(DEPDIR)/stapio-stapio.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='runtime/staprun/stapio.c' object='stapio-stapio.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(stapio_CFLAGS) $(CFLAGS) -c -o stapio-stapio.o `test -f 'runtime/staprun/stapio.c' || echo '$(srcdir)/'`runtime/staprun/stapio.c
+
+stapio-stapio.obj: runtime/staprun/stapio.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(stapio_CFLAGS) $(CFLAGS) -MT stapio-stapio.obj -MD -MP -MF $(DEPDIR)/stapio-stapio.Tpo -c -o stapio-stapio.obj `if test -f 'runtime/staprun/stapio.c'; then $(CYGPATH_W) 'runtime/staprun/stapio.c'; else $(CYGPATH_W) '$(srcdir)/runtime/staprun/stapio.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/stapio-stapio.Tpo $(DEPDIR)/stapio-stapio.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='runtime/staprun/stapio.c' object='stapio-stapio.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(stapio_CFLAGS) $(CFLAGS) -c -o stapio-stapio.obj `if test -f 'runtime/staprun/stapio.c'; then $(CYGPATH_W) 'runtime/staprun/stapio.c'; else $(CYGPATH_W) '$(srcdir)/runtime/staprun/stapio.c'; fi`
+
+stapio-mainloop.o: runtime/staprun/mainloop.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(stapio_CFLAGS) $(CFLAGS) -MT stapio-mainloop.o -MD -MP -MF $(DEPDIR)/stapio-mainloop.Tpo -c -o stapio-mainloop.o `test -f 'runtime/staprun/mainloop.c' || echo '$(srcdir)/'`runtime/staprun/mainloop.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/stapio-mainloop.Tpo $(DEPDIR)/stapio-mainloop.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='runtime/staprun/mainloop.c' object='stapio-mainloop.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(stapio_CFLAGS) $(CFLAGS) -c -o stapio-mainloop.o `test -f 'runtime/staprun/mainloop.c' || echo '$(srcdir)/'`runtime/staprun/mainloop.c
+
+stapio-mainloop.obj: runtime/staprun/mainloop.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(stapio_CFLAGS) $(CFLAGS) -MT stapio-mainloop.obj -MD -MP -MF $(DEPDIR)/stapio-mainloop.Tpo -c -o stapio-mainloop.obj `if test -f 'runtime/staprun/mainloop.c'; then $(CYGPATH_W) 'runtime/staprun/mainloop.c'; else $(CYGPATH_W) '$(srcdir)/runtime/staprun/mainloop.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/stapio-mainloop.Tpo $(DEPDIR)/stapio-mainloop.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='runtime/staprun/mainloop.c' object='stapio-mainloop.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(stapio_CFLAGS) $(CFLAGS) -c -o stapio-mainloop.obj `if test -f 'runtime/staprun/mainloop.c'; then $(CYGPATH_W) 'runtime/staprun/mainloop.c'; else $(CYGPATH_W) '$(srcdir)/runtime/staprun/mainloop.c'; fi`
+
+stapio-common.o: runtime/staprun/common.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(stapio_CFLAGS) $(CFLAGS) -MT stapio-common.o -MD -MP -MF $(DEPDIR)/stapio-common.Tpo -c -o stapio-common.o `test -f 'runtime/staprun/common.c' || echo '$(srcdir)/'`runtime/staprun/common.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/stapio-common.Tpo $(DEPDIR)/stapio-common.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='runtime/staprun/common.c' object='stapio-common.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(stapio_CFLAGS) $(CFLAGS) -c -o stapio-common.o `test -f 'runtime/staprun/common.c' || echo '$(srcdir)/'`runtime/staprun/common.c
+
+stapio-common.obj: runtime/staprun/common.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(stapio_CFLAGS) $(CFLAGS) -MT stapio-common.obj -MD -MP -MF $(DEPDIR)/stapio-common.Tpo -c -o stapio-common.obj `if test -f 'runtime/staprun/common.c'; then $(CYGPATH_W) 'runtime/staprun/common.c'; else $(CYGPATH_W) '$(srcdir)/runtime/staprun/common.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/stapio-common.Tpo $(DEPDIR)/stapio-common.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='runtime/staprun/common.c' object='stapio-common.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(stapio_CFLAGS) $(CFLAGS) -c -o stapio-common.obj `if test -f 'runtime/staprun/common.c'; then $(CYGPATH_W) 'runtime/staprun/common.c'; else $(CYGPATH_W) '$(srcdir)/runtime/staprun/common.c'; fi`
+
+stapio-symbols.o: runtime/staprun/symbols.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(stapio_CFLAGS) $(CFLAGS) -MT stapio-symbols.o -MD -MP -MF $(DEPDIR)/stapio-symbols.Tpo -c -o stapio-symbols.o `test -f 'runtime/staprun/symbols.c' || echo '$(srcdir)/'`runtime/staprun/symbols.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/stapio-symbols.Tpo $(DEPDIR)/stapio-symbols.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='runtime/staprun/symbols.c' object='stapio-symbols.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(stapio_CFLAGS) $(CFLAGS) -c -o stapio-symbols.o `test -f 'runtime/staprun/symbols.c' || echo '$(srcdir)/'`runtime/staprun/symbols.c
+
+stapio-symbols.obj: runtime/staprun/symbols.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(stapio_CFLAGS) $(CFLAGS) -MT stapio-symbols.obj -MD -MP -MF $(DEPDIR)/stapio-symbols.Tpo -c -o stapio-symbols.obj `if test -f 'runtime/staprun/symbols.c'; then $(CYGPATH_W) 'runtime/staprun/symbols.c'; else $(CYGPATH_W) '$(srcdir)/runtime/staprun/symbols.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/stapio-symbols.Tpo $(DEPDIR)/stapio-symbols.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='runtime/staprun/symbols.c' object='stapio-symbols.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(stapio_CFLAGS) $(CFLAGS) -c -o stapio-symbols.obj `if test -f 'runtime/staprun/symbols.c'; then $(CYGPATH_W) 'runtime/staprun/symbols.c'; else $(CYGPATH_W) '$(srcdir)/runtime/staprun/symbols.c'; fi`
+
+stapio-ctl.o: runtime/staprun/ctl.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(stapio_CFLAGS) $(CFLAGS) -MT stapio-ctl.o -MD -MP -MF $(DEPDIR)/stapio-ctl.Tpo -c -o stapio-ctl.o `test -f 'runtime/staprun/ctl.c' || echo '$(srcdir)/'`runtime/staprun/ctl.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/stapio-ctl.Tpo $(DEPDIR)/stapio-ctl.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='runtime/staprun/ctl.c' object='stapio-ctl.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(stapio_CFLAGS) $(CFLAGS) -c -o stapio-ctl.o `test -f 'runtime/staprun/ctl.c' || echo '$(srcdir)/'`runtime/staprun/ctl.c
+
+stapio-ctl.obj: runtime/staprun/ctl.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(stapio_CFLAGS) $(CFLAGS) -MT stapio-ctl.obj -MD -MP -MF $(DEPDIR)/stapio-ctl.Tpo -c -o stapio-ctl.obj `if test -f 'runtime/staprun/ctl.c'; then $(CYGPATH_W) 'runtime/staprun/ctl.c'; else $(CYGPATH_W) '$(srcdir)/runtime/staprun/ctl.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/stapio-ctl.Tpo $(DEPDIR)/stapio-ctl.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='runtime/staprun/ctl.c' object='stapio-ctl.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(stapio_CFLAGS) $(CFLAGS) -c -o stapio-ctl.obj `if test -f 'runtime/staprun/ctl.c'; then $(CYGPATH_W) 'runtime/staprun/ctl.c'; else $(CYGPATH_W) '$(srcdir)/runtime/staprun/ctl.c'; fi`
+
+stapio-relay.o: runtime/staprun/relay.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(stapio_CFLAGS) $(CFLAGS) -MT stapio-relay.o -MD -MP -MF $(DEPDIR)/stapio-relay.Tpo -c -o stapio-relay.o `test -f 'runtime/staprun/relay.c' || echo '$(srcdir)/'`runtime/staprun/relay.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/stapio-relay.Tpo $(DEPDIR)/stapio-relay.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='runtime/staprun/relay.c' object='stapio-relay.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(stapio_CFLAGS) $(CFLAGS) -c -o stapio-relay.o `test -f 'runtime/staprun/relay.c' || echo '$(srcdir)/'`runtime/staprun/relay.c
+
+stapio-relay.obj: runtime/staprun/relay.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(stapio_CFLAGS) $(CFLAGS) -MT stapio-relay.obj -MD -MP -MF $(DEPDIR)/stapio-relay.Tpo -c -o stapio-relay.obj `if test -f 'runtime/staprun/relay.c'; then $(CYGPATH_W) 'runtime/staprun/relay.c'; else $(CYGPATH_W) '$(srcdir)/runtime/staprun/relay.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/stapio-relay.Tpo $(DEPDIR)/stapio-relay.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='runtime/staprun/relay.c' object='stapio-relay.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(stapio_CFLAGS) $(CFLAGS) -c -o stapio-relay.obj `if test -f 'runtime/staprun/relay.c'; then $(CYGPATH_W) 'runtime/staprun/relay.c'; else $(CYGPATH_W) '$(srcdir)/runtime/staprun/relay.c'; fi`
+
+stapio-relay_old.o: runtime/staprun/relay_old.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(stapio_CFLAGS) $(CFLAGS) -MT stapio-relay_old.o -MD -MP -MF $(DEPDIR)/stapio-relay_old.Tpo -c -o stapio-relay_old.o `test -f 'runtime/staprun/relay_old.c' || echo '$(srcdir)/'`runtime/staprun/relay_old.c
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/stapio-relay_old.Tpo $(DEPDIR)/stapio-relay_old.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='runtime/staprun/relay_old.c' object='stapio-relay_old.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(stapio_CFLAGS) $(CFLAGS) -c -o stapio-relay_old.o `test -f 'runtime/staprun/relay_old.c' || echo '$(srcdir)/'`runtime/staprun/relay_old.c
+
+stapio-relay_old.obj: runtime/staprun/relay_old.c
+@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(stapio_CFLAGS) $(CFLAGS) -MT stapio-relay_old.obj -MD -MP -MF $(DEPDIR)/stapio-relay_old.Tpo -c -o stapio-relay_old.obj `if test -f 'runtime/staprun/relay_old.c'; then $(CYGPATH_W) 'runtime/staprun/relay_old.c'; else $(CYGPATH_W) '$(srcdir)/runtime/staprun/relay_old.c'; fi`
+@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/stapio-relay_old.Tpo $(DEPDIR)/stapio-relay_old.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='runtime/staprun/relay_old.c' object='stapio-relay_old.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(stapio_CFLAGS) $(CFLAGS) -c -o stapio-relay_old.obj `if test -f 'runtime/staprun/relay_old.c'; then $(CYGPATH_W) 'runtime/staprun/relay_old.c'; else $(CYGPATH_W) '$(srcdir)/runtime/staprun/relay_old.c'; fi`
+
 staprun-staprun.o: runtime/staprun/staprun.c
 @am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(staprun_CPPFLAGS) $(CPPFLAGS) $(staprun_CFLAGS) $(CFLAGS) -MT staprun-staprun.o -MD -MP -MF $(DEPDIR)/staprun-staprun.Tpo -c -o staprun-staprun.o `test -f 'runtime/staprun/staprun.c' || echo '$(srcdir)/'`runtime/staprun/staprun.c
 @am__fastdepCC_TRUE@	mv -f $(DEPDIR)/staprun-staprun.Tpo $(DEPDIR)/staprun-staprun.Po
@@ -655,104 +753,6 @@ staprun-common.obj: runtime/staprun/common.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	source='runtime/staprun/common.c' object='staprun-common.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(staprun_CPPFLAGS) $(CPPFLAGS) $(staprun_CFLAGS) $(CFLAGS) -c -o staprun-common.obj `if test -f 'runtime/staprun/common.c'; then $(CYGPATH_W) 'runtime/staprun/common.c'; else $(CYGPATH_W) '$(srcdir)/runtime/staprun/common.c'; fi`
-
-staprun_io-staprun_io.o: runtime/staprun/staprun_io.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(staprun_io_CFLAGS) $(CFLAGS) -MT staprun_io-staprun_io.o -MD -MP -MF $(DEPDIR)/staprun_io-staprun_io.Tpo -c -o staprun_io-staprun_io.o `test -f 'runtime/staprun/staprun_io.c' || echo '$(srcdir)/'`runtime/staprun/staprun_io.c
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/staprun_io-staprun_io.Tpo $(DEPDIR)/staprun_io-staprun_io.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='runtime/staprun/staprun_io.c' object='staprun_io-staprun_io.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(staprun_io_CFLAGS) $(CFLAGS) -c -o staprun_io-staprun_io.o `test -f 'runtime/staprun/staprun_io.c' || echo '$(srcdir)/'`runtime/staprun/staprun_io.c
-
-staprun_io-staprun_io.obj: runtime/staprun/staprun_io.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(staprun_io_CFLAGS) $(CFLAGS) -MT staprun_io-staprun_io.obj -MD -MP -MF $(DEPDIR)/staprun_io-staprun_io.Tpo -c -o staprun_io-staprun_io.obj `if test -f 'runtime/staprun/staprun_io.c'; then $(CYGPATH_W) 'runtime/staprun/staprun_io.c'; else $(CYGPATH_W) '$(srcdir)/runtime/staprun/staprun_io.c'; fi`
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/staprun_io-staprun_io.Tpo $(DEPDIR)/staprun_io-staprun_io.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='runtime/staprun/staprun_io.c' object='staprun_io-staprun_io.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(staprun_io_CFLAGS) $(CFLAGS) -c -o staprun_io-staprun_io.obj `if test -f 'runtime/staprun/staprun_io.c'; then $(CYGPATH_W) 'runtime/staprun/staprun_io.c'; else $(CYGPATH_W) '$(srcdir)/runtime/staprun/staprun_io.c'; fi`
-
-staprun_io-mainloop.o: runtime/staprun/mainloop.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(staprun_io_CFLAGS) $(CFLAGS) -MT staprun_io-mainloop.o -MD -MP -MF $(DEPDIR)/staprun_io-mainloop.Tpo -c -o staprun_io-mainloop.o `test -f 'runtime/staprun/mainloop.c' || echo '$(srcdir)/'`runtime/staprun/mainloop.c
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/staprun_io-mainloop.Tpo $(DEPDIR)/staprun_io-mainloop.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='runtime/staprun/mainloop.c' object='staprun_io-mainloop.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(staprun_io_CFLAGS) $(CFLAGS) -c -o staprun_io-mainloop.o `test -f 'runtime/staprun/mainloop.c' || echo '$(srcdir)/'`runtime/staprun/mainloop.c
-
-staprun_io-mainloop.obj: runtime/staprun/mainloop.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(staprun_io_CFLAGS) $(CFLAGS) -MT staprun_io-mainloop.obj -MD -MP -MF $(DEPDIR)/staprun_io-mainloop.Tpo -c -o staprun_io-mainloop.obj `if test -f 'runtime/staprun/mainloop.c'; then $(CYGPATH_W) 'runtime/staprun/mainloop.c'; else $(CYGPATH_W) '$(srcdir)/runtime/staprun/mainloop.c'; fi`
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/staprun_io-mainloop.Tpo $(DEPDIR)/staprun_io-mainloop.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='runtime/staprun/mainloop.c' object='staprun_io-mainloop.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(staprun_io_CFLAGS) $(CFLAGS) -c -o staprun_io-mainloop.obj `if test -f 'runtime/staprun/mainloop.c'; then $(CYGPATH_W) 'runtime/staprun/mainloop.c'; else $(CYGPATH_W) '$(srcdir)/runtime/staprun/mainloop.c'; fi`
-
-staprun_io-common.o: runtime/staprun/common.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(staprun_io_CFLAGS) $(CFLAGS) -MT staprun_io-common.o -MD -MP -MF $(DEPDIR)/staprun_io-common.Tpo -c -o staprun_io-common.o `test -f 'runtime/staprun/common.c' || echo '$(srcdir)/'`runtime/staprun/common.c
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/staprun_io-common.Tpo $(DEPDIR)/staprun_io-common.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='runtime/staprun/common.c' object='staprun_io-common.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(staprun_io_CFLAGS) $(CFLAGS) -c -o staprun_io-common.o `test -f 'runtime/staprun/common.c' || echo '$(srcdir)/'`runtime/staprun/common.c
-
-staprun_io-common.obj: runtime/staprun/common.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(staprun_io_CFLAGS) $(CFLAGS) -MT staprun_io-common.obj -MD -MP -MF $(DEPDIR)/staprun_io-common.Tpo -c -o staprun_io-common.obj `if test -f 'runtime/staprun/common.c'; then $(CYGPATH_W) 'runtime/staprun/common.c'; else $(CYGPATH_W) '$(srcdir)/runtime/staprun/common.c'; fi`
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/staprun_io-common.Tpo $(DEPDIR)/staprun_io-common.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='runtime/staprun/common.c' object='staprun_io-common.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(staprun_io_CFLAGS) $(CFLAGS) -c -o staprun_io-common.obj `if test -f 'runtime/staprun/common.c'; then $(CYGPATH_W) 'runtime/staprun/common.c'; else $(CYGPATH_W) '$(srcdir)/runtime/staprun/common.c'; fi`
-
-staprun_io-symbols.o: runtime/staprun/symbols.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(staprun_io_CFLAGS) $(CFLAGS) -MT staprun_io-symbols.o -MD -MP -MF $(DEPDIR)/staprun_io-symbols.Tpo -c -o staprun_io-symbols.o `test -f 'runtime/staprun/symbols.c' || echo '$(srcdir)/'`runtime/staprun/symbols.c
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/staprun_io-symbols.Tpo $(DEPDIR)/staprun_io-symbols.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='runtime/staprun/symbols.c' object='staprun_io-symbols.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(staprun_io_CFLAGS) $(CFLAGS) -c -o staprun_io-symbols.o `test -f 'runtime/staprun/symbols.c' || echo '$(srcdir)/'`runtime/staprun/symbols.c
-
-staprun_io-symbols.obj: runtime/staprun/symbols.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(staprun_io_CFLAGS) $(CFLAGS) -MT staprun_io-symbols.obj -MD -MP -MF $(DEPDIR)/staprun_io-symbols.Tpo -c -o staprun_io-symbols.obj `if test -f 'runtime/staprun/symbols.c'; then $(CYGPATH_W) 'runtime/staprun/symbols.c'; else $(CYGPATH_W) '$(srcdir)/runtime/staprun/symbols.c'; fi`
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/staprun_io-symbols.Tpo $(DEPDIR)/staprun_io-symbols.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='runtime/staprun/symbols.c' object='staprun_io-symbols.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(staprun_io_CFLAGS) $(CFLAGS) -c -o staprun_io-symbols.obj `if test -f 'runtime/staprun/symbols.c'; then $(CYGPATH_W) 'runtime/staprun/symbols.c'; else $(CYGPATH_W) '$(srcdir)/runtime/staprun/symbols.c'; fi`
-
-staprun_io-ctl.o: runtime/staprun/ctl.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(staprun_io_CFLAGS) $(CFLAGS) -MT staprun_io-ctl.o -MD -MP -MF $(DEPDIR)/staprun_io-ctl.Tpo -c -o staprun_io-ctl.o `test -f 'runtime/staprun/ctl.c' || echo '$(srcdir)/'`runtime/staprun/ctl.c
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/staprun_io-ctl.Tpo $(DEPDIR)/staprun_io-ctl.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='runtime/staprun/ctl.c' object='staprun_io-ctl.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(staprun_io_CFLAGS) $(CFLAGS) -c -o staprun_io-ctl.o `test -f 'runtime/staprun/ctl.c' || echo '$(srcdir)/'`runtime/staprun/ctl.c
-
-staprun_io-ctl.obj: runtime/staprun/ctl.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(staprun_io_CFLAGS) $(CFLAGS) -MT staprun_io-ctl.obj -MD -MP -MF $(DEPDIR)/staprun_io-ctl.Tpo -c -o staprun_io-ctl.obj `if test -f 'runtime/staprun/ctl.c'; then $(CYGPATH_W) 'runtime/staprun/ctl.c'; else $(CYGPATH_W) '$(srcdir)/runtime/staprun/ctl.c'; fi`
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/staprun_io-ctl.Tpo $(DEPDIR)/staprun_io-ctl.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='runtime/staprun/ctl.c' object='staprun_io-ctl.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(staprun_io_CFLAGS) $(CFLAGS) -c -o staprun_io-ctl.obj `if test -f 'runtime/staprun/ctl.c'; then $(CYGPATH_W) 'runtime/staprun/ctl.c'; else $(CYGPATH_W) '$(srcdir)/runtime/staprun/ctl.c'; fi`
-
-staprun_io-relay.o: runtime/staprun/relay.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(staprun_io_CFLAGS) $(CFLAGS) -MT staprun_io-relay.o -MD -MP -MF $(DEPDIR)/staprun_io-relay.Tpo -c -o staprun_io-relay.o `test -f 'runtime/staprun/relay.c' || echo '$(srcdir)/'`runtime/staprun/relay.c
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/staprun_io-relay.Tpo $(DEPDIR)/staprun_io-relay.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='runtime/staprun/relay.c' object='staprun_io-relay.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(staprun_io_CFLAGS) $(CFLAGS) -c -o staprun_io-relay.o `test -f 'runtime/staprun/relay.c' || echo '$(srcdir)/'`runtime/staprun/relay.c
-
-staprun_io-relay.obj: runtime/staprun/relay.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(staprun_io_CFLAGS) $(CFLAGS) -MT staprun_io-relay.obj -MD -MP -MF $(DEPDIR)/staprun_io-relay.Tpo -c -o staprun_io-relay.obj `if test -f 'runtime/staprun/relay.c'; then $(CYGPATH_W) 'runtime/staprun/relay.c'; else $(CYGPATH_W) '$(srcdir)/runtime/staprun/relay.c'; fi`
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/staprun_io-relay.Tpo $(DEPDIR)/staprun_io-relay.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='runtime/staprun/relay.c' object='staprun_io-relay.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(staprun_io_CFLAGS) $(CFLAGS) -c -o staprun_io-relay.obj `if test -f 'runtime/staprun/relay.c'; then $(CYGPATH_W) 'runtime/staprun/relay.c'; else $(CYGPATH_W) '$(srcdir)/runtime/staprun/relay.c'; fi`
-
-staprun_io-relay_old.o: runtime/staprun/relay_old.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(staprun_io_CFLAGS) $(CFLAGS) -MT staprun_io-relay_old.o -MD -MP -MF $(DEPDIR)/staprun_io-relay_old.Tpo -c -o staprun_io-relay_old.o `test -f 'runtime/staprun/relay_old.c' || echo '$(srcdir)/'`runtime/staprun/relay_old.c
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/staprun_io-relay_old.Tpo $(DEPDIR)/staprun_io-relay_old.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='runtime/staprun/relay_old.c' object='staprun_io-relay_old.o' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(staprun_io_CFLAGS) $(CFLAGS) -c -o staprun_io-relay_old.o `test -f 'runtime/staprun/relay_old.c' || echo '$(srcdir)/'`runtime/staprun/relay_old.c
-
-staprun_io-relay_old.obj: runtime/staprun/relay_old.c
-@am__fastdepCC_TRUE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(staprun_io_CFLAGS) $(CFLAGS) -MT staprun_io-relay_old.obj -MD -MP -MF $(DEPDIR)/staprun_io-relay_old.Tpo -c -o staprun_io-relay_old.obj `if test -f 'runtime/staprun/relay_old.c'; then $(CYGPATH_W) 'runtime/staprun/relay_old.c'; else $(CYGPATH_W) '$(srcdir)/runtime/staprun/relay_old.c'; fi`
-@am__fastdepCC_TRUE@	mv -f $(DEPDIR)/staprun_io-relay_old.Tpo $(DEPDIR)/staprun_io-relay_old.Po
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	source='runtime/staprun/relay_old.c' object='staprun_io-relay_old.obj' libtool=no @AMDEPBACKSLASH@
-@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
-@am__fastdepCC_FALSE@	$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(staprun_io_CFLAGS) $(CFLAGS) -c -o staprun_io-relay_old.obj `if test -f 'runtime/staprun/relay_old.c'; then $(CYGPATH_W) 'runtime/staprun/relay_old.c'; else $(CYGPATH_W) '$(srcdir)/runtime/staprun/relay_old.c'; fi`
 
 .cxx.o:
 @am__fastdepCXX_TRUE@	$(CXXCOMPILE) -MT $@ -MD -MP -MF $(DEPDIR)/$*.Tpo -c -o $@ $<

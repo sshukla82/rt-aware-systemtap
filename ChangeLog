@@ -1,3 +1,8 @@
+2007-07-16  David Smith  <dsmith@redhat.com>
+
+	* Makefile.am: Renamed 'staprun_io' to 'stapio'.
+	* Makefile.in: Regenerated.
+
 2007-07-13  David Smith  <dsmith@redhat.com>
 
 	* .cvsignore: Added staprun_io and stap_merge.
