@@ -136,10 +136,10 @@ run_stp_check (void)
 }
 
 static int
-run_staprun_io(char **argv)
+run_stapio(char **argv)
 {
-	dbug (2, "execing staprun_io\n");
-	return run_as(cmd_uid, cmd_gid, PKGLIBDIR "/staprun_io", argv);
+	dbug (2, "execing stapio\n");
+	return run_as(cmd_uid, cmd_gid, PKGLIBDIR "/stapio", argv);
 }
 
 static int
@@ -372,7 +372,7 @@ main(int argc, char **argv)
 
 	setup_main_signals();
 
-	rc = run_staprun_io(argv);
+	rc = run_stapio(argv);
 	cleanup(rc);
 
 	return 0;

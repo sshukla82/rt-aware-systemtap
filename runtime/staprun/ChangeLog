@@ -1,5 +1,13 @@
 2007-07-16  David Smith  <dsmith@redhat.com>
 
+	* staprun_io.c: Renamed to stapio.c.
+	* stapio.c: Renamed from staprun_io.c.
+	* staprun.c (run_stapio): Renamed from 'run_staprun_io'.  Execs
+	'stapio' instead of 'staprun_io'.
+	(main): Runs run_stapio() instead of run_staprun_io().
+	
+2007-07-16  David Smith  <dsmith@redhat.com>
+
 	* staprun.c (setup_ctl_channel): New function to change ownership
 	on the 'cmd' file.
 	(init_staprun): Calls setup_ctl_channel().
