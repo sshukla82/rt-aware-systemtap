@@ -234,14 +234,15 @@ setup_ctl_channel(int setup)
 		gid = cmd_gid;
 	}
 
- 	if (statfs("/sys/kernel/debug", &st) == 0
+ 	if (statfs(DEBUGFSDIR, &st) == 0
 	    && (int) st.f_type == (int) DEBUGFS_MAGIC)
- 		sprintf (buf, "/sys/kernel/debug/systemtap/%s/cmd", modname);
+ 		sprintf (buf, DEBUGFSDIR "/systemtap/%s/cmd", modname);
 	else
 		sprintf (buf, "/proc/systemtap/%s/cmd", modname);
 	dbug(2, "attempting to chown %s\n", buf);
 	if (chown(buf, uid, gid) < 0) {
-		perror("chown");
+		fprintf(stderr, "ERROR: Couldn't change ownership of %s: %s\n",
+			buf, strerror(errno));
 		return -1;
 	}
 	return 0;
@@ -262,12 +263,13 @@ setup_relayfs(int setup)
 	}
 
 	dbug(1, "setting up relayfs\n");
- 	if (statfs("/sys/kernel/debug", &st) == 0
+ 	if (statfs(DEBUGFSDIR, &st) == 0
 	    && (int) st.f_type == (int) DEBUGFS_MAGIC)
-		sprintf(relay_filebase, "/sys/kernel/debug/systemtap/%s",
+		sprintf(relay_filebase, DEBUGFSDIR "/systemtap/%s",
 			modname);
  	else {
-		fprintf(stderr,"Cannot find relayfs or debugfs mount point.\n");
+		fprintf(stderr, "ERROR: Cannot find debugfs mount point %s.\n",
+			DEBUGFSDIR);
 		return -1;
 	}
 
@@ -295,17 +297,17 @@ setup_oldrelayfs(int setup)
 	}
 
 	dbug(1, "setting up relayfs\n");
- 	if (statfs("/sys/kernel/debug", &st) == 0
+ 	if (statfs(DEBUGFSDIR, &st) == 0
 	    && (int) st.f_type == (int) DEBUGFS_MAGIC) {
  		sprintf(relay_filebase,
-			"/sys/kernel/debug/systemtap/%s/trace", modname);
+			DEBUGFSDIR "/systemtap/%s/trace", modname);
  		sprintf(proc_filebase,
-			"/sys/kernel/debug/systemtap/%s/", modname);
+			DEBUGFSDIR "/systemtap/%s/", modname);
 	}
-	else if (statfs("/mnt/relay", &st) == 0
+	else if (statfs(RELAYFSDIR, &st) == 0
 		 && (int) st.f_type == (int) RELAYFS_MAGIC) {
  		sprintf(relay_filebase,
-			"/mnt/relay/systemtap/%s/trace", modname);
+			RELAYFSDIR "/systemtap/%s/trace", modname);
  		sprintf(proc_filebase, "/proc/systemtap/%s/", modname);
  	}
 	else {
