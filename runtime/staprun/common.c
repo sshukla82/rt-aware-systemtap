@@ -149,7 +149,34 @@ void setup_signals(void)
 int
 using_old_transport(void)
 {
-	if (system(VERSION_CMD)) {
+	struct utsname utsbuf;
+	int i;
+	long int kver[3];
+	char *start, *end;
+
+	if (uname(&utsbuf) != 0) {
+		fprintf(stderr,
+			"Error: Unable to determine kernel version, uname failed: %s\n",
+			strerror(errno));
+		return -1;
+	}
+
+	start = utsbuf.release;
+	for (i = 0; i < 3; i++) {
+		errno = 0;
+		kver[i] = strtol(start, &end, 10);
+		if (errno != 0) {
+			fprintf(stderr,
+				"Error: Unable to parse kernel version, strtol failed: %s\n",
+				strerror(errno));
+			return -1;
+		}
+		start = end;
+		start++;
+	}
+
+	if (KERNEL_VERSION(kver[0], kver[1], kver[2])
+	    <= KERNEL_VERSION(2, 6, 15)) {
 		dbug(2, "Using OLD TRANSPORT\n");
 		return 1;
 	}

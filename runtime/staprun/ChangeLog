@@ -1,3 +1,16 @@
+2007-07-17  David Smith  <dsmith@redhat.com>
+
+	* staprun.c (run_stp_check): Replaced by mountfs().
+	(mountfs): New function.  Replaces an external script with C code.
+	(init_staprun): Calls mountfs() instead of run_stp_check().
+	Checks return value of use_old_transport().
+	* common.c (using_old_transport): Instead of running an external
+	command, now implemented internally.
+	* staprun.h: Removed VERSION_CMD, which was used by
+	using_old_transport().
+	* mainloop.c (init_staprun): Checks return value of
+	use_old_transport().
+
 2007-07-16  David Smith  <dsmith@redhat.com>
 
 	* staprun_io.c: Renamed to stapio.c.

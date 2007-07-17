@@ -23,6 +23,7 @@
 #include "staprun.h"
 #include "common.h"
 #include <pwd.h>
+#include <sys/mount.h>
 
 extern char *optarg;
 extern int optopt;
@@ -116,23 +117,101 @@ run_as(uid_t uid, gid_t gid, const char *path, char *const argv[])
 	return -1;
 }
 
-/* stp_check script */
-#ifdef PKGLIBDIR
-char *stp_check=PKGLIBDIR "/stp_check";
-#else
-char *stp_check="stp_check";
-#endif
+#define DEBUGFSDIR "/sys/kernel/debug"
+#define RELAYFSDIR "/mnt/relay"
 
 static int
-run_stp_check (void)
+mountfs(void)
 {
-	int ret ;
-	char *argv[] = { stp_check, NULL };
+	struct stat sb;
+	struct statfs st;
+	int rc;
 
-	/* run the _stp_check script */
-	dbug(2, "executing %s\n", stp_check);
-	ret = run_as(0, 0, stp_check, argv);
-	return ret;
+	/* If the debugfs dir is already mounted correctly, we're done. */
+ 	if (statfs(DEBUGFSDIR, &st) == 0
+	    && (int) st.f_type == (int) DEBUGFS_MAGIC)
+		return 0;
+
+	/* If DEBUGFSDIR exists (and is a directory), try to mount
+	 * DEBUGFSDIR. */
+	rc = stat(DEBUGFSDIR, &sb);
+	if (rc == 0 && S_ISDIR(sb.st_mode)) {
+		/* If we can mount the debugfs dir correctly, we're done. */
+		if (mount("debugfs", DEBUGFSDIR, "debugfs", 0, NULL) == 0) {
+			return 0;
+		}
+		/* If we got ENODEV, that means that debugfs isn't
+		 * supported, so we'll need try try relayfs.  If we
+		 * didn't get ENODEV, we got a real error. */
+		else if (errno != ENODEV) {
+			fprintf(stderr, "ERROR: Couldn't mount %s: %s\n",
+				DEBUGFSDIR, strerror(errno));
+			return -1;
+		}
+	}
+	
+	/* DEBUGFSDIR couldn't be mounted.  So, try RELAYFSDIR. */
+
+	/* If the relayfs dir is already mounted correctly, we're done. */
+	if (statfs(RELAYFSDIR, &st) == 0
+	    && (int)st.f_type == (int)RELAYFS_MAGIC)
+		return 0;
+
+	/* Ensure that RELAYFSDIR exists and is a directory. */
+	rc = stat(RELAYFSDIR, &sb);
+	if (rc == 0 && ! S_ISDIR(sb.st_mode)) {
+		fprintf(stderr, "ERROR: %s exists but isn't a directory.\n",
+			RELAYFSDIR);
+		return -1;
+	}
+	else if (rc < 0) {
+		mode_t old_umask;
+		int saved_errno;
+
+		/* To ensure the directory gets created with the proper
+		 * permissions, set umask to a known value. */
+		old_umask = umask(0002);
+
+		/* To ensure the directory gets created with the
+		 * proper group, we'll have to temporarily switch to
+		 * root. */
+		if (setgid(0) < 0) {
+			fprintf(stderr,
+				"ERROR: Couldn't change group while creating %s: %s\n",
+				RELAYFSDIR, strerror(errno));
+			return -1;
+		}
+
+		/* Try to create the directory, saving the return
+		 * status and errno value. */
+		rc = mkdir(RELAYFSDIR, 0755);
+		saved_errno = errno;
+
+		/* Restore everything we changed. */
+		if (setgid(cmd_gid) < 0) {
+			fprintf(stderr,
+				"ERROR: Couldn't restore group while creating %s: %s\n",
+				RELAYFSDIR, strerror(errno));
+			return -1;
+		}
+		umask(old_umask);
+
+		/* If creating the directory failed, error out. */
+		if (rc < 0) {
+			fprintf(stderr, "ERROR, couldn't create %s: %s\n",
+				RELAYFSDIR, strerror(saved_errno));
+			return -1;
+		}
+	}
+
+	/* Now that we're sure the directory exists, try mounting
+	 * RELAYFSDIR. */
+	if (mount("relayfs", RELAYFSDIR, "relayfs", 0, NULL) < 0) {
+		fprintf(stderr, "ERROR, couldn't mount %s: %s\n",
+			RELAYFSDIR, strerror(errno));
+		return -1;
+	}
+	return 0;
 }
 
 static int
@@ -253,7 +332,7 @@ init_staprun(void)
 	char bufcmd[128];
 
 	dbug(2, "init_staprun\n");
-	if (run_stp_check() < 0)
+	if (mountfs() < 0)
 		return -1;
 
 	/* insert module */
@@ -277,6 +356,9 @@ init_staprun(void)
 		return -1;
 
 	use_old_transport = using_old_transport();
+	if (use_old_transport < 0)
+		return -1;
+
 	if (use_old_transport) {
 		if (setup_oldrelayfs(1) < 0)
 			return -1;

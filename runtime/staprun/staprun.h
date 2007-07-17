@@ -47,9 +47,6 @@
 #define STP_OLD_TRANSPORT
 #include "../transport/transport_msgs.h"
 
-/* command to check system's kernel version */
-/* KERNEL_VERSION(2.6.15) = 132623 */
-#define VERSION_CMD "uname -r | awk \'{split($1,a,\".\"); split(a[3],b,\"-\"); exit (a[1]*65536+a[2]*256+b[1] <= 132623)}\'"
 extern int use_old_transport;
 
 #define RELAYFS_MAGIC			0xF0B4A981

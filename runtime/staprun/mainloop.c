@@ -143,6 +143,8 @@ int init_staprun(void)
 	dbug(2, "init_staprun\n");
 
 	use_old_transport = using_old_transport();
+	if (use_old_transport < 0)
+		return -1;
 
 	if (attach_mod) {
 		dbug(2, "Attaching\n");
