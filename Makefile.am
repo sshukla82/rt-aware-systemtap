@@ -67,9 +67,8 @@ stapio_LDADD = @PROCFLAGS@ -lpthread
 install-exec-hook:
 	chmod 04111 "$(DESTDIR)$(bindir)/staprun"
 
-pkglibexec_SCRIPTS = stp_check
 pkglibexec_PROGRAMS = stapio
-CLEANFILES += $(pkglibexec_SCRIPTS) $(pkglibexec_PROGRAMS)
+CLEANFILES +=  $(pkglibexec_PROGRAMS)
 
 noinst_PROGRAMS = loc2c-test stap_merge
 loc2c_test_SOURCES = loc2c-test.c loc2c.c

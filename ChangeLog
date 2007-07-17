@@ -1,3 +1,11 @@
+2007-07-17  David Smith  <dsmith@redhat.com>
+
+	* stp_check.in: Removed.
+	* Makefile.am: Removed stp_check reference.
+	* Makefile.in: Regenerated.
+	* configure.ac: Removed stp_check reference.
+	* configure: Regenerated.
+
 2007-07-16  David Smith  <dsmith@redhat.com>
 
 	* .cvsignore: Replaced 'staprun_io' with 'stapio'.

@@ -16,7 +16,6 @@
 
 # Makefile.am --- automake input file for systemtap
 
-
 VPATH = @srcdir@
 pkgdatadir = $(datadir)/@PACKAGE@
 pkglibdir = $(libdir)/@PACKAGE@
@@ -49,8 +48,8 @@ DIST_COMMON = README $(am__configure_deps) $(dist_man_MANS) \
 	$(srcdir)/config.in $(srcdir)/lket-b2a.1.in \
 	$(srcdir)/lket.5.in $(srcdir)/stap.1.in $(srcdir)/stapex.5.in \
 	$(srcdir)/stapfuncs.5.in $(srcdir)/stapprobes.5.in \
-	$(srcdir)/staprun.8.in $(srcdir)/stp_check.in \
-	$(srcdir)/systemtap.spec.in $(top_srcdir)/configure \
+	$(srcdir)/staprun.8.in $(srcdir)/systemtap.spec.in \
+	$(top_srcdir)/configure \
 	$(top_srcdir)/man/stapprobes.iosched.5.in \
 	$(top_srcdir)/man/stapprobes.netdev.5.in \
 	$(top_srcdir)/man/stapprobes.nfs.5.in \
@@ -73,17 +72,17 @@ am__CONFIG_DISTCLEAN_FILES = config.status config.cache config.log \
  configure.lineno config.status.lineno
 mkinstalldirs = $(install_sh) -d
 CONFIG_HEADER = config.h
-CONFIG_CLEAN_FILES = systemtap.spec stp_check stap.1 stapprobes.5 \
-	stapfuncs.5 stapex.5 staprun.8 lket.5 lket-b2a.1 \
-	man/stapprobes.iosched.5 man/stapprobes.netdev.5 \
-	man/stapprobes.nfs.5 man/stapprobes.nfsd.5 \
-	man/stapprobes.pagefault.5 man/stapprobes.process.5 \
-	man/stapprobes.rpc.5 man/stapprobes.scsi.5 \
-	man/stapprobes.signal.5 man/stapprobes.socket.5 \
-	man/stapprobes.tcp.5 man/stapprobes.udp.5
+CONFIG_CLEAN_FILES = systemtap.spec stap.1 stapprobes.5 stapfuncs.5 \
+	stapex.5 staprun.8 lket.5 lket-b2a.1 man/stapprobes.iosched.5 \
+	man/stapprobes.netdev.5 man/stapprobes.nfs.5 \
+	man/stapprobes.nfsd.5 man/stapprobes.pagefault.5 \
+	man/stapprobes.process.5 man/stapprobes.rpc.5 \
+	man/stapprobes.scsi.5 man/stapprobes.signal.5 \
+	man/stapprobes.socket.5 man/stapprobes.tcp.5 \
+	man/stapprobes.udp.5
 am__installdirs = "$(DESTDIR)$(bindir)" "$(DESTDIR)$(pkglibexecdir)" \
-	"$(DESTDIR)$(pkglibexecdir)" "$(DESTDIR)$(man1dir)" \
-	"$(DESTDIR)$(man5dir)" "$(DESTDIR)$(man8dir)"
+	"$(DESTDIR)$(man1dir)" "$(DESTDIR)$(man5dir)" \
+	"$(DESTDIR)$(man8dir)"
 binPROGRAMS_INSTALL = $(INSTALL_PROGRAM)
 pkglibexecPROGRAMS_INSTALL = $(INSTALL_PROGRAM)
 PROGRAMS = $(bin_PROGRAMS) $(noinst_PROGRAMS) $(pkglibexec_PROGRAMS)
@@ -124,8 +123,6 @@ staprun_LDADD = $(LDADD)
 staprun_DEPENDENCIES =
 staprun_LINK = $(CCLD) $(staprun_CFLAGS) $(CFLAGS) $(AM_LDFLAGS) \
 	$(LDFLAGS) -o $@
-pkglibexecSCRIPT_INSTALL = $(INSTALL_SCRIPT)
-SCRIPTS = $(pkglibexec_SCRIPTS)
 DEFAULT_INCLUDES = -I.@am__isrc@
 depcomp = $(SHELL) $(top_srcdir)/depcomp
 am__depfiles_maybe = depfiles
@@ -284,8 +281,7 @@ stap_LDADD = @stap_LIBS@ @sqlite3_LIBS@
 stap_CXXFLAGS = $(AM_CXXFLAGS)
 stap_CPPFLAGS = $(AM_CPPFLAGS) $(am__append_1)
 stap_LDFLAGS = $(AM_LDFLAGS) $(am__append_2)
-CLEANFILES = $(am__append_3) $(pkglibexec_SCRIPTS) \
-	$(pkglibexec_PROGRAMS)
+CLEANFILES = $(am__append_3) $(pkglibexec_PROGRAMS)
 
 # This tells automake's "make distcheck" what we need to compile.
 @BUILD_ELFUTILS_TRUE@DISTCHECK_CONFIGURE_FLAGS = --with-elfutils=$(elfutils_abs_srcdir)
@@ -301,7 +297,6 @@ stapio_SOURCES = runtime/staprun/stapio.c \
 
 stapio_CFLAGS = @PROCFLAGS@ $(AM_CFLAGS)
 stapio_LDADD = @PROCFLAGS@ -lpthread
-pkglibexec_SCRIPTS = stp_check
 loc2c_test_SOURCES = loc2c-test.c loc2c.c
 loc2c_test_CPPFLAGS = $(stap_CPPFLAGS)
 loc2c_test_LDFLAGS = $(stap_LDFLAGS)
@@ -387,8 +382,6 @@ $(srcdir)/config.in: @MAINTAINER_MODE_TRUE@ $(am__configure_deps)
 distclean-hdr:
 	-rm -f config.h stamp-h1
 systemtap.spec: $(top_builddir)/config.status $(srcdir)/systemtap.spec.in
-	cd $(top_builddir) && $(SHELL) ./config.status $@
-stp_check: $(top_builddir)/config.status $(srcdir)/stp_check.in
 	cd $(top_builddir) && $(SHELL) ./config.status $@
 stap.1: $(top_builddir)/config.status $(srcdir)/stap.1.in
 	cd $(top_builddir) && $(SHELL) ./config.status $@
@@ -492,25 +485,6 @@ stapio$(EXEEXT): $(stapio_OBJECTS) $(stapio_DEPENDENCIES)
 staprun$(EXEEXT): $(staprun_OBJECTS) $(staprun_DEPENDENCIES) 
 	@rm -f staprun$(EXEEXT)
 	$(staprun_LINK) $(staprun_OBJECTS) $(staprun_LDADD) $(LIBS)
-install-pkglibexecSCRIPTS: $(pkglibexec_SCRIPTS)
-	@$(NORMAL_INSTALL)
-	test -z "$(pkglibexecdir)" || $(MKDIR_P) "$(DESTDIR)$(pkglibexecdir)"
-	@list='$(pkglibexec_SCRIPTS)'; for p in $$list; do \
-	  if test -f "$$p"; then d=; else d="$(srcdir)/"; fi; \
-	  if test -f $$d$$p; then \
-	    f=`echo "$$p" | sed 's|^.*/||;$(transform)'`; \
-	    echo " $(pkglibexecSCRIPT_INSTALL) '$$d$$p' '$(DESTDIR)$(pkglibexecdir)/$$f'"; \
-	    $(pkglibexecSCRIPT_INSTALL) "$$d$$p" "$(DESTDIR)$(pkglibexecdir)/$$f"; \
-	  else :; fi; \
-	done
-
-uninstall-pkglibexecSCRIPTS:
-	@$(NORMAL_UNINSTALL)
-	@list='$(pkglibexec_SCRIPTS)'; for p in $$list; do \
-	  f=`echo "$$p" | sed 's|^.*/||;$(transform)'`; \
-	  echo " rm -f '$(DESTDIR)$(pkglibexecdir)/$$f'"; \
-	  rm -f "$(DESTDIR)$(pkglibexecdir)/$$f"; \
-	done
 
 mostlyclean-compile:
 	-rm -f *.$(OBJEXT)
@@ -1337,10 +1311,10 @@ check-am: all-am
 check: $(BUILT_SOURCES)
 	$(MAKE) $(AM_MAKEFLAGS) check-recursive
 @BUILD_CRASHMOD_FALSE@all-local:
-all-am: Makefile $(PROGRAMS) $(SCRIPTS) $(MANS) config.h all-local
+all-am: Makefile $(PROGRAMS) $(MANS) config.h all-local
 installdirs: installdirs-recursive
 installdirs-am:
-	for dir in "$(DESTDIR)$(bindir)" "$(DESTDIR)$(pkglibexecdir)" "$(DESTDIR)$(pkglibexecdir)" "$(DESTDIR)$(man1dir)" "$(DESTDIR)$(man5dir)" "$(DESTDIR)$(man8dir)"; do \
+	for dir in "$(DESTDIR)$(bindir)" "$(DESTDIR)$(pkglibexecdir)" "$(DESTDIR)$(man1dir)" "$(DESTDIR)$(man5dir)" "$(DESTDIR)$(man8dir)"; do \
 	  test -z "$$dir" || $(MKDIR_P) "$$dir"; \
 	done
 install: $(BUILT_SOURCES)
@@ -1396,7 +1370,7 @@ install-data-am: install-data-local install-man
 install-dvi: install-dvi-recursive
 
 install-exec-am: install-binPROGRAMS install-exec-local \
-	install-pkglibexecPROGRAMS install-pkglibexecSCRIPTS
+	install-pkglibexecPROGRAMS
 	@$(NORMAL_INSTALL)
 	$(MAKE) $(AM_MAKEFLAGS) install-exec-hook
 
@@ -1432,7 +1406,7 @@ ps: ps-recursive
 ps-am:
 
 uninstall-am: uninstall-binPROGRAMS uninstall-local uninstall-man \
-	uninstall-pkglibexecPROGRAMS uninstall-pkglibexecSCRIPTS
+	uninstall-pkglibexecPROGRAMS
 
 uninstall-man: uninstall-man1 uninstall-man5 uninstall-man8
 
@@ -1453,15 +1427,14 @@ uninstall-man: uninstall-man1 uninstall-man5 uninstall-man8
 	install-exec-am install-exec-hook install-exec-local \
 	install-html install-html-am install-info install-info-am \
 	install-man install-man1 install-man5 install-man8 install-pdf \
-	install-pdf-am install-pkglibexecPROGRAMS \
-	install-pkglibexecSCRIPTS install-ps install-ps-am \
-	install-strip installcheck installcheck-am installdirs \
-	installdirs-am maintainer-clean maintainer-clean-generic \
-	mostlyclean mostlyclean-compile mostlyclean-generic pdf pdf-am \
-	ps ps-am tags tags-recursive uninstall uninstall-am \
-	uninstall-binPROGRAMS uninstall-local uninstall-man \
-	uninstall-man1 uninstall-man5 uninstall-man8 \
-	uninstall-pkglibexecPROGRAMS uninstall-pkglibexecSCRIPTS
+	install-pdf-am install-pkglibexecPROGRAMS install-ps \
+	install-ps-am install-strip installcheck installcheck-am \
+	installdirs installdirs-am maintainer-clean \
+	maintainer-clean-generic mostlyclean mostlyclean-compile \
+	mostlyclean-generic pdf pdf-am ps ps-am tags tags-recursive \
+	uninstall uninstall-am uninstall-binPROGRAMS uninstall-local \
+	uninstall-man uninstall-man1 uninstall-man5 uninstall-man8 \
+	uninstall-pkglibexecPROGRAMS
 
 @BUILD_ELFUTILS_TRUE@stamp-elfutils: config.status
 @BUILD_ELFUTILS_TRUE@	$(MAKE) $(AM_MAKEFLAGS) -C build-elfutils all
