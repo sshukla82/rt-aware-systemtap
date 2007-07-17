@@ -156,7 +156,7 @@ using_old_transport(void)
 
 	if (uname(&utsbuf) != 0) {
 		fprintf(stderr,
-			"Error: Unable to determine kernel version, uname failed: %s\n",
+			"ERROR: Unable to determine kernel version, uname failed: %s\n",
 			strerror(errno));
 		return -1;
 	}
@@ -167,7 +167,7 @@ using_old_transport(void)
 		kver[i] = strtol(start, &end, 10);
 		if (errno != 0) {
 			fprintf(stderr,
-				"Error: Unable to parse kernel version, strtol failed: %s\n",
+				"ERROR: Unable to parse kernel version, strtol failed: %s\n",
 				strerror(errno));
 			return -1;
 		}
@@ -201,7 +201,9 @@ check_path(void)
 	/* First, we need to figure out what the kernel
 	 * version is and build the '/lib/modules/KVER/systemtap' path. */
 	if (uname(&utsbuf) != 0) {
-		perror("uname");
+		fprintf(stderr,
+			"ERROR: Unable to determine kernel version, uname failed: %s\n",
+			strerror(errno));
 		return -1;
 	}
 	sprintf(staplib_dir_path, "/lib/modules/%s/systemtap",
@@ -211,7 +213,7 @@ check_path(void)
 	 * path. */
 	if (realpath(staplib_dir_path, staplib_dir_realpath) == NULL) {
 		fprintf(stderr,
-			"Error: Unable to canonicalize path \"%s\": %s\n",
+			"ERROR: Unable to canonicalize path \"%s\": %s\n",
 			staplib_dir_path, strerror(errno));
 		return -1;
 	}
@@ -219,7 +221,7 @@ check_path(void)
 	/* Use realpath() to canonicalize the module path. */
 	if (realpath(modpath, module_realpath) == NULL) {
 		fprintf(stderr,
-			"Error: Unable to canonicalize path \"%s\": %s\n",
+			"ERROR: Unable to canonicalize path \"%s\": %s\n",
 			modpath, strerror(errno));
 		return -1;
 	}
@@ -229,7 +231,7 @@ check_path(void)
 	if (strncmp(staplib_dir_realpath, module_realpath,
 		    strlen(staplib_dir_realpath)) != 0) {
 		fprintf(stderr,
-			"Error: Members of the \"stapusr\" group can only use modules within\n"
+			"ERROR: Members of the \"stapusr\" group can only use modules within\n"
 			"  the \"%s\" directory.\n"
 			"  Module \"%s\" does not exist within that directory.\n",
 			staplib_dir_path, modpath);
@@ -281,7 +283,7 @@ check_permissions(void)
 
 	/* If neither group was found, just return an error. */
 	if (stapdev_gid == (gid_t)-1 && stapusr_gid == (gid_t)-1) {
-		fprintf(stderr, "Error: unable to find either group \"stapdev\" or group \"stapusr\"\n");
+		fprintf(stderr, "ERROR: unable to find either group \"stapdev\" or group \"stapusr\"\n");
 		return -1;
 	}
 
@@ -296,7 +298,8 @@ check_permissions(void)
 	/* Get the list of the user's groups. */
 	ngids = getgroups(NGROUPS_MAX, gidlist);
 	if (ngids < 0) {
-		perror("getgroups");
+		fprintf(stderr, "ERROR: Unable to retrieve group list: %s\n",
+			strerror(errno));
 		return -1;
 	}
 
@@ -319,7 +322,7 @@ check_permissions(void)
 	/* If path_check is 0, then the user isn't a member of either
 	 * group.  Error out. */
 	if (path_check == 0) {
-		fprintf(stderr, "Error: you must be a member of either group \"stapdev\" or group \"stapusr\"\n");
+		fprintf(stderr, "ERROR: you must be a member of either group \"stapdev\" or group \"stapusr\"\n");
 		return 0;
 	}
 

@@ -198,7 +198,7 @@ mountfs(void)
 
 		/* If creating the directory failed, error out. */
 		if (rc < 0) {
-			fprintf(stderr, "ERROR, couldn't create %s: %s\n",
+			fprintf(stderr, "ERROR: Couldn't create %s: %s\n",
 				RELAYFSDIR, strerror(saved_errno));
 			return -1;
 		}
@@ -207,7 +207,7 @@ mountfs(void)
 	/* Now that we're sure the directory exists, try mounting
 	 * RELAYFSDIR. */
 	if (mount("relayfs", RELAYFSDIR, "relayfs", 0, NULL) < 0) {
-		fprintf(stderr, "ERROR, couldn't mount %s: %s\n",
+		fprintf(stderr, "ERROR: Couldn't mount %s: %s\n",
 			RELAYFSDIR, strerror(errno));
 		return -1;
 	}
@@ -348,7 +348,7 @@ init_staprun(void)
 
 		if (run_as(0, 0, "/sbin/insmod", modoptions) != 0) {
 			fprintf(stderr,
-				"ERROR, couldn't insmod probe module %s\n",
+				"ERROR: Couldn't insmod probe module %s\n",
 				modpath);
 			return -1;
 		}

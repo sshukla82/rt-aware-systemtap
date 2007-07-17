@@ -1,5 +1,13 @@
 2007-07-17  David Smith  <dsmith@redhat.com>
 
+	* common.c (using_old_transport): Standardized error messages.
+	(check_path): Ditto.
+	(check_permissions): Ditto.
+	* staprun.c (mountfs): Ditto.
+	(init_staprun): Ditto.
+
+2007-07-17  David Smith  <dsmith@redhat.com>
+
 	* staprun.c (setup_ctl_channel): Uses DEBUGFS define and improved
 	error message.
 	(setup_relayfs): Ditto.
