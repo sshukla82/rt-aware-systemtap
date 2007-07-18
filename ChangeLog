@@ -1,3 +1,8 @@
+2007-07-18  David Smith  <dsmith@redhat.com>
+
+	* systemtap.spec.in: Made staprun readable so that rpmbuild's
+	post-processing steps work correctly.
+
 2007-07-17  David Smith  <dsmith@redhat.com>
 
 	* stp_check.in: Removed.
