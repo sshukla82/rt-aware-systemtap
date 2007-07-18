@@ -256,7 +256,7 @@ check_permissions(void)
 	int path_check = 0;
 
 	/* If we're root, we can do anything. */
-	if (cmd_uid == 0)
+	if (geteuid() == 0)
 		return 1;
 
 	/* Lookup the gid for group "stapdev" */

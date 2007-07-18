@@ -29,3 +29,4 @@ extern void setup_signals(void);
 extern int using_old_transport(void);
 
 extern int check_permissions(void);
+

@@ -120,7 +120,8 @@ err1:
 	close(fd);
 	closedir(secdir);
 err0:
-	err("overflowed buffers.\n");
+	/* if this happens, something went seriously wrong. */
+	err("Unexpected error. Overflowed buffers.\n");
 	cleanup_and_exit(0);
 	return 0; /* not reached */
 }
@@ -166,26 +167,27 @@ static int compar(const void *p1, const void *p2)
 	return 1;
 }
 
-#define MAX_SYMBOLS 32768
+#define MAX_SYMBOLS 32*1024
 
 void do_kernel_symbols(void)
 {
-	FILE *kallsyms;
-	char *sym_base, *data_base;
+	FILE *kallsyms=NULL;
+	char *sym_base=NULL, *data_base=NULL;
 	char buf[128], *ptr, *name, *data, *dataptr, *datamax, type;
 	unsigned long addr;
 	struct _stp_symbol *syms;
-	int num_syms, i = 0;
+	int num_syms, i = 0, max_syms= MAX_SYMBOLS;
+	int data_basesize = MAX_SYMBOLS*32;
 
-	sym_base = malloc(MAX_SYMBOLS*sizeof(struct _stp_symbol)+sizeof(long));
-	data_base = malloc(MAX_SYMBOLS*32);
+	sym_base = malloc(max_syms*sizeof(struct _stp_symbol)+sizeof(long));
+	data_base = malloc(data_basesize);
 	if (data_base == NULL || sym_base == NULL) {
 		fprintf(stderr,"Failed to allocate memory for symbols\n");
-		cleanup_and_exit(0);
+		goto err;
 	}
 	*(int *)data_base = STP_SYMBOLS;
 	dataptr = data = data_base + sizeof(long);
-	datamax = dataptr + MAX_SYMBOLS*32 - sizeof(long);
+	datamax = data_base + data_basesize;
 
 	*(int *)sym_base = STP_SYMBOLS;
 	syms = (struct _stp_symbol *)(sym_base + sizeof(long));
@@ -193,7 +195,7 @@ void do_kernel_symbols(void)
 	kallsyms = fopen ("/proc/kallsyms", "r");
 	if (!kallsyms) {
 		perror("Fatal error: Unable to open /proc/kallsyms:");
-		cleanup_and_exit(0);
+		goto err;
 	}
 
 	/* put empty string in data */
@@ -216,8 +218,30 @@ void do_kernel_symbols(void)
 			while (*name) *dataptr++ = *name++;
 			*dataptr++ = 0;
 			i++;
-			if (dataptr > datamax - 1000)
-			  break;
+			if (i >= max_syms) {
+				char *s;
+				max_syms *= 2;
+				s = realloc(sym_base, max_syms*sizeof(struct _stp_symbol)+sizeof(long));
+				if (s == NULL) {
+					err("Could not allocate enough space for symbols.\n");
+					goto err;
+				}
+				syms = (struct _stp_symbol *)(s + sizeof(long));
+				sym_base = s;
+			}
+			if (dataptr > datamax - 1024) {
+				char *db;
+				data_basesize *= 2;
+				db = realloc(data_base, data_basesize);
+				if (db == NULL) {
+					err("Could not allocate enough space for symbols.\n");
+					goto err;
+				}
+				dataptr = db + (dataptr - data_base);
+				data = db + sizeof(long);
+				datamax = db + data_basesize;
+				data_base = db;
+			}
 		}
 	}
 	num_syms = i;
@@ -241,17 +265,15 @@ void do_kernel_symbols(void)
 	free(data_base);
 	free(sym_base);
 	fclose(kallsyms);
-
-	if (dataptr >= datamax) {
-		err("Error: overflowed symbol data area.\n");
-		cleanup_and_exit(0);
-	}
 	return;
 
 err:
-	free(data_base);
-	free(sym_base);
-	fclose(kallsyms);
+	if (data_base)
+		free(data_base);
+	if (sym_base)
+		free(sym_base);
+	if (kallsyms)
+		fclose(kallsyms);
 
 	err("Loading of symbols failed. Exiting...\n");
 	cleanup_and_exit(0);

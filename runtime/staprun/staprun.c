@@ -42,13 +42,13 @@ char modname[128];
 char *modpath = NULL;
 #define MAXMODOPTIONS 64
 char *modoptions[MAXMODOPTIONS];
-uid_t cmd_uid;
-gid_t cmd_gid;
 
 /* globals */
 int control_channel = 0;
 int ncpus;
 int use_old_transport = 0;
+
+
 
 static void
 path_parse_modname (char *path)
@@ -98,10 +98,13 @@ run_as(uid_t uid, gid_t gid, const char *path, char *const argv[])
 		 * switching to a non-root user, this won't allow
 		 * that process to switch back to root (since the
 		 * original process is setuid). */
+
+		add_cap(CAP_SETUID); add_cap(CAP_SETGID);
 		if (setresgid(gid, gid, gid) < 0)
 			perror("setresgid");
 		if (setresuid(uid, uid, uid) < 0)
 			perror("setresuid");
+		del_cap(CAP_SETUID); del_cap(CAP_SETGID);
 
 		/* Actually run the command. */
 		if (execv(path, argv) < 0)
@@ -167,6 +170,7 @@ mountfs(void)
 	else if (rc < 0) {
 		mode_t old_umask;
 		int saved_errno;
+		gid_t gid = getgid();
 
 		/* To ensure the directory gets created with the proper
 		 * permissions, set umask to a known value. */
@@ -188,7 +192,7 @@ mountfs(void)
 		saved_errno = errno;
 
 		/* Restore everything we changed. */
-		if (setgid(cmd_gid) < 0) {
+		if (setgid(gid) < 0) {
 			fprintf(stderr,
 				"ERROR: Couldn't restore group while creating %s: %s\n",
 				RELAYFSDIR, strerror(errno));
@@ -218,114 +222,40 @@ static int
 run_stapio(char **argv)
 {
 	dbug (2, "execing stapio\n");
-	return run_as(cmd_uid, cmd_gid, PKGLIBDIR "/stapio", argv);
+	return run_as(getuid(), getgid(), PKGLIBDIR "/stapio", argv);
 }
 
-static int
-setup_ctl_channel(int setup)
+
+extern long init_module(void *, unsigned long, const char *);
+#define streq(a,b) (strcmp((a),(b)) == 0)
+static void *grab_file(const char *filename, unsigned long *size)
 {
-	char buf[PATH_MAX];
-	struct statfs st;
-	uid_t uid = 0;
-	gid_t gid = 0;
+	unsigned int max = 16384;
+	int ret, fd;
+	void *buffer = malloc(max);
+	if (!buffer)
+		return NULL;
 
-	if (setup) {
-		uid = cmd_uid;
-		gid = cmd_gid;
-	}
-
- 	if (statfs(DEBUGFSDIR, &st) == 0
-	    && (int) st.f_type == (int) DEBUGFS_MAGIC)
- 		sprintf (buf, DEBUGFSDIR "/systemtap/%s/cmd", modname);
+	if (streq(filename, "-"))
+		fd = dup(STDIN_FILENO);
 	else
-		sprintf (buf, "/proc/systemtap/%s/cmd", modname);
-	dbug(2, "attempting to chown %s\n", buf);
-	if (chown(buf, uid, gid) < 0) {
-		fprintf(stderr, "ERROR: Couldn't change ownership of %s: %s\n",
-			buf, strerror(errno));
-		return -1;
-	}
-	return 0;
-}
+		fd = open(filename, O_RDONLY, 0);
 
-static int
-setup_relayfs(int setup)
-{
-	int i;
-	struct statfs st;
-	char buf[PATH_MAX], relay_filebase[PATH_MAX];
-	uid_t uid = 0;
-	gid_t gid = 0;
+	if (fd < 0)
+		return NULL;
 
-	if (setup) {
-		uid = cmd_uid;
-		gid = cmd_gid;
+	*size = 0;
+	while ((ret = read(fd, buffer + *size, max - *size)) > 0) {
+		*size += ret;
+		if (*size == max)
+			buffer = realloc(buffer, max *= 2);
 	}
-
-	dbug(1, "setting up relayfs\n");
- 	if (statfs(DEBUGFSDIR, &st) == 0
-	    && (int) st.f_type == (int) DEBUGFS_MAGIC)
-		sprintf(relay_filebase, DEBUGFSDIR "/systemtap/%s",
-			modname);
- 	else {
-		fprintf(stderr, "ERROR: Cannot find debugfs mount point %s.\n",
-			DEBUGFSDIR);
-		return -1;
+	if (ret < 0) {
+		free(buffer);
+		buffer = NULL;
 	}
-
-	for (i = 0; i < NR_CPUS; i++) {
-		sprintf(buf, "%s/trace%d", relay_filebase, i);
-		dbug(2, "attempting to chown %s\n", buf);
-		if (chown(buf, uid, gid) < 0)
-			break;
-	}
-	return 0;
-}
-
-static int
-setup_oldrelayfs(int setup)
-{
-	int i;
-	struct statfs st;
-	char buf[PATH_MAX], relay_filebase[PATH_MAX], proc_filebase[PATH_MAX];
-	uid_t uid = 0;
-	gid_t gid = 0;
-
-	if (setup) {
-		uid = cmd_uid;
-		gid = cmd_gid;
-	}
-
-	dbug(1, "setting up relayfs\n");
- 	if (statfs(DEBUGFSDIR, &st) == 0
-	    && (int) st.f_type == (int) DEBUGFS_MAGIC) {
- 		sprintf(relay_filebase,
-			DEBUGFSDIR "/systemtap/%s/trace", modname);
- 		sprintf(proc_filebase,
-			DEBUGFSDIR "/systemtap/%s/", modname);
-	}
-	else if (statfs(RELAYFSDIR, &st) == 0
-		 && (int) st.f_type == (int) RELAYFS_MAGIC) {
- 		sprintf(relay_filebase,
-			RELAYFSDIR "/systemtap/%s/trace", modname);
- 		sprintf(proc_filebase, "/proc/systemtap/%s/", modname);
- 	}
-	else {
-		fprintf(stderr,"Cannot find relayfs or debugfs mount point.\n");
-		return -1;
-	}
-
-	for (i = 0; i < NR_CPUS; i++) {
-		sprintf(buf, "%s%d", relay_filebase, i);
-		dbug(2, "attempting to chown %s\n", buf);
-		if (chown(buf, uid, gid) < 0)
-			break;
-		sprintf(buf, "%s%d", proc_filebase, i);
-		dbug(2, "attempting to chown %s\n", buf);
-		if (chown(buf, uid, gid) < 0)
-			break;
-	}
-	return 0;
+	close(fd);
+	return buffer;
 }
 
 int
@@ -334,67 +264,54 @@ init_staprun(void)
 	char bufcmd[128];
 
 	dbug(2, "init_staprun\n");
-	if (mountfs() < 0)
+
+	add_cap(CAP_SYS_ADMIN);
+	if (mountfs() < 0) {
+		del_cap(CAP_SYS_ADMIN);
 		return -1;
+	}
+	del_cap(CAP_SYS_ADMIN);
 
 	/* insert module */
 	if (! attach_mod) {
+		long ret;
+		void *file;
+		unsigned long len;
+
 		dbug(2, "inserting module\n");
 		sprintf(bufcmd, "_stp_bufsize=%d", buffer_size);
-		modoptions[0] = "insmod";
-		modoptions[1] = modpath;
-		modoptions[2] = bufcmd;
-		/* modoptions[3...N] set by command line parser. */
-
-		if (run_as(0, 0, "/sbin/insmod", modoptions) != 0) {
-			fprintf(stderr,
-				"ERROR: Couldn't insmod probe module %s\n",
-				modpath);
-			return -1;
+		file = grab_file(modpath, &len);
+		if (!file) {
+			fprintf(stderr, "insmod: can't read '%s': %s\n",
+				modpath, strerror(errno));
+			exit(1);
 		}
-	}
+		add_cap(CAP_SYS_MODULE);
+		ret = init_module(file, len, bufcmd);
+		del_cap(CAP_SYS_MODULE);
 
-	if (setup_ctl_channel(1) < 0)
-		return -1;
-
-	use_old_transport = using_old_transport();
-	if (use_old_transport < 0)
-		return -1;
-
-	if (use_old_transport) {
-		if (setup_oldrelayfs(1) < 0)
-			return -1;
-	}
-	else {
-		if (setup_relayfs(1) < 0)
-			return -1;
+		if (ret != 0) {
+			fprintf(stderr, "insmod: error inserting '%s': %li %s\n",
+				modpath, ret, strerror(errno));
+			exit(1);	
+		}
 	}
 	return 0;
 }
 	
+extern long delete_module(const char *, unsigned int);
+
 static void
 cleanup(int rc)
 {
-	char *argv[] = { "rmmod", "-w", modname, NULL };
-
-	if (rc != 2)
-	{
+	/* rc == 2 means disconnected */
+	if (rc != 2) {
+		long ret;
 		dbug(2, "removing module %s...\n", modname);
-		if (run_as(0, 0, "/sbin/rmmod", argv) != 0) {
-			fprintf(stderr,
-				"ERROR: couldn't rmmod probe module %s.\n",
-				modname);
-			exit(1);
-		}
-	}
-	else {
-		setup_ctl_channel(0);
-
-		use_old_transport = using_old_transport();
-		if (use_old_transport)
-			setup_oldrelayfs(0);
-		else
-			setup_relayfs(0);
+		add_cap(CAP_SYS_MODULE);
+		ret = delete_module(modname, 0);
+		del_cap(CAP_SYS_MODULE);
+		printf("delete_module returned %ld\n", ret);
 	}
 }
 
@@ -403,12 +320,16 @@ main(int argc, char **argv)
 {
 	int rc;
 
+	if (!init_cap())
+		exit(-1);
+
 	/* Get rid of a few standard environment variables (which
 	 * might cause us to do unintended things). */
 	rc = unsetenv("IFS") || unsetenv("CDPATH") || unsetenv("ENV")
 		|| unsetenv("BASH_ENV");
 	if (rc)
 		fprintf(stderr, "unsetenv failed: %s\n", strerror(errno));
+
 
 	setup_signals();
 
@@ -442,14 +363,14 @@ main(int argc, char **argv)
 		usage(argv[0]);
 	}
 
-	cmd_uid = getuid();
-	cmd_gid = getgid();
-
 	if (check_permissions() != 1)
 		usage(argv[0]);
 
 	/* now bump the priority */
-	setpriority (PRIO_PROCESS, 0, -10);
+	 add_cap(CAP_SYS_NICE);
+	if (setpriority (PRIO_PROCESS, 0, -10) < 0)
+		perror("setpriority");
+	 del_cap(CAP_SYS_NICE);
 
 	if (init_staprun())
 		exit(1);

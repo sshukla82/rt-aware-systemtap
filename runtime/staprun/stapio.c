@@ -66,7 +66,7 @@ static void path_parse_modname (char *path)
 int main(int argc, char **argv)
 {
 	setup_signals();
-
+	
 	parse_args(argc, argv);
 
 	if (verbose) {
@@ -96,12 +96,6 @@ int main(int argc, char **argv)
 		fprintf (stderr, "Need a module to load.\n");
 		usage(argv[0]);
 	}
-
-	cmd_uid = getuid();
-	cmd_gid = getgid();
-
-	/* now bump the priority */
-	setpriority (PRIO_PROCESS, 0, -10);
 
 	if (init_staprun())
 		exit(1);

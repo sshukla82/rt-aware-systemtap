@@ -33,6 +33,7 @@
 #include <sys/wait.h>
 #include <sys/statfs.h>
 #include <linux/version.h>
+#include <sys/capability.h>
 
 #define DEBUG
 #ifdef DEBUG
@@ -68,6 +69,12 @@ void close_relayfs(void);
 int init_oldrelayfs(void);
 void close_oldrelayfs(int);
 void setup_signals(void);
+/* cap.c */
+void print_cap(char *text);
+int init_cap(void);
+void add_cap(cap_value_t cap);
+void del_cap(cap_value_t cap);
+void drop_cap(cap_value_t cap);
 
 /*
  * variables 
@@ -86,10 +93,6 @@ extern char *target_cmd;
 extern char *outfile_name;
 extern int attach_mod;
 extern int load_only;
-
-/* uid/gid to use when execing external programs */
-extern uid_t cmd_uid;
-extern gid_t cmd_gid;
 
 /* maximum number of CPUs we can handle */
 #define NR_CPUS 256

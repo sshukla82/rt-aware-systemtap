@@ -1,3 +1,10 @@
+2007-07-18  Martin Hunt  <hunt@redhat.com>
+	    
+	* symbols.c (do_kernel_symbols): Better detect overfow
+	conditions and realloc new space.
+	* cap.c: New.
+	* all: Remove cmd_uid, cmd_gid.  Use capabilities.
+
 2007-07-17  David Smith  <dsmith@redhat.com>
 
 	* common.c (using_old_transport): Standardized error messages.

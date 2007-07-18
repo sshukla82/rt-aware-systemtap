@@ -109,8 +109,6 @@ void start_cmd(void)
  * system_cmd() executes system commands in response
  * to an STP_SYSTEM message from the module. These
  * messages are sent by the system() systemtap function.
- * uid and gid are set because staprun is running as root and 
- * it is best to run commands as the real user.
  */
 void system_cmd(char *cmd)
 {
@@ -120,12 +118,6 @@ void system_cmd(char *cmd)
 	if ((pid = fork()) < 0) {
 		perror ("fork");
 	} else if (pid == 0) {
-		if (setregid(cmd_gid, cmd_gid) < 0) {
-			perror("setregid");
-		}
-		if (setreuid(cmd_uid, cmd_uid) < 0) {
-			perror("setreuid");
-		}
 		if (execl("/bin/sh", "sh", "-c", cmd, NULL) < 0)
 			perror(cmd);
 		_exit(-1);
