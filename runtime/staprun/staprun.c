@@ -171,6 +171,7 @@ mountfs(void)
 		mode_t old_umask;
 		int saved_errno;
 		gid_t gid = getgid();
+		uid_t uid = getuid();
 
 		/* To ensure the directory gets created with the proper
 		 * permissions, set umask to a known value. */
@@ -179,6 +180,13 @@ mountfs(void)
 		/* To ensure the directory gets created with the
 		 * proper group, we'll have to temporarily switch to
 		 * root. */
+		add_cap(CAP_SETUID); add_cap(CAP_SETGID);
+		if (setuid(0) < 0) {
+			fprintf(stderr,
+				"ERROR: Couldn't change user while creating %s: %s\n",
+				RELAYFSDIR, strerror(errno));
+			return -1;
+		}
 		if (setgid(0) < 0) {
 			fprintf(stderr,
 				"ERROR: Couldn't change group while creating %s: %s\n",
@@ -198,6 +206,13 @@ mountfs(void)
 				RELAYFSDIR, strerror(errno));
 			return -1;
 		}
+		if (setuid(uid) < 0) {
+			fprintf(stderr,
+				"ERROR: Couldn't restore user while creating %s: %s\n",
+				RELAYFSDIR, strerror(errno));
+			return -1;
+		}
+		del_cap(CAP_SETUID); del_cap(CAP_SETGID);
 		umask(old_umask);
 
 		/* If creating the directory failed, error out. */
