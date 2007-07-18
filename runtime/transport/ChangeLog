@@ -1,3 +1,22 @@
+2007-07-18  Martin Hunt  <hunt@redhat.com>
+
+	* utt.c (utt_create_buf_file_callback): Set file
+	ownership.
+	(utt_create_global_buf_file_callback): Set file
+	ownership.
+	
+	* procfs.c (_stp_register_ctl_channel): Set ownership
+	of cmd file.
+
+	* transport.h: Delcare _stp_uid amd _stp_gid.
+	* transport.c (_stp_transport_init): Set _stp_uid and _stp_gid.
+	
+	from Michal Schmidt  <mschmidt@redhat.com>
+
+        * symbols.c (_stp_del_module): Split freeing of module memory into
+        a separate function _stp_free_module().
+        (_stp_do_module): Free module memory if _stp_ins_module() fails.
+
 2007-07-16  David Smith  <dsmith@redhat.com>
 
 	* control.c (_stp_register_ctl_channel): Change 'cmd' file

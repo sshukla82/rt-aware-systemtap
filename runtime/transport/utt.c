@@ -65,7 +65,6 @@ static struct dentry *utt_create_tree(struct utt_trace *utt, const char *root, c
         dir = debugfs_create_dir(name, utt->utt_tree_root);
         if (!dir)
                 utt_remove_root(utt);
-
 err:
         return dir;
 }
@@ -144,8 +143,13 @@ static struct dentry *utt_create_buf_file_callback(const char *filename,
 						   struct rchan_buf *buf,
 						   int *is_global)
 {
-	return debugfs_create_file(filename, mode, parent, buf,
+	struct dentry *file = debugfs_create_file(filename, mode, parent, buf,
 				   &relay_file_operations);
+	if (file) {
+		file->d_inode->i_uid = _stp_uid;
+		file->d_inode->i_gid = _stp_gid;
+	}
+	return  file;
 }
 
 static struct dentry *utt_create_global_buf_file_callback(const char *filename,
@@ -154,9 +158,15 @@ static struct dentry *utt_create_global_buf_file_callback(const char *filename,
 							  struct rchan_buf *buf,
 							  int *is_global)
 {
+	struct dentry *file; 
 	*is_global = 1;
-	return debugfs_create_file(filename, mode, parent, buf,
+	file = debugfs_create_file(filename, mode, parent, buf,
 				   &relay_file_operations);
+	if (file) {
+		file->d_inode->i_uid = _stp_uid;
+		file->d_inode->i_gid = _stp_gid;
+	}
+	return  file;
 }
 
 static struct rchan_callbacks utt_relay_callbacks = {

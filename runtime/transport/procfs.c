@@ -396,6 +396,8 @@ static int _stp_register_ctl_channel (void)
 	de = create_proc_entry ("cmd", 0600, _stp_proc_mod);
 	if (de == NULL) 
 		goto err1;
+	de->uid = _stp_uid;
+	de->gid = _stp_gid;
 	de->proc_fops = &_stp_proc_fops_cmd;
 	return 0;
 
