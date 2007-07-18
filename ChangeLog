@@ -1,3 +1,9 @@
+2007-07-18  Martin Hunt  <hunt@redhat.com>
+
+	* Makefile.am (staprun_SOURCES): Add cap.c.
+	(staprun_LDADD): Add -lcap.
+	* Makefile.in: Rebuilt.
+
 2007-07-18  David Smith  <dsmith@redhat.com>
 
 	* systemtap.spec.in: Made staprun readable so that rpmbuild's
