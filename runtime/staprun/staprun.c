@@ -159,11 +159,11 @@ main(int argc, char **argv)
 		usage(argv[0]);
 
 	/* now bump the priority */
-	add_cap(CAP_SYS_NICE);
-	if (setpriority (PRIO_PROCESS, 0, -10) < 0)
+	rc = do_cap(CAP_SYS_NICE, setpriority, PRIO_PROCESS, 0, -10);
+	/* failure is not fatal in this case*/
+	if (rc < 0)
 		perror("setpriority");
-	del_cap(CAP_SYS_NICE);
-	
+
 	if (init_staprun())
 		exit(1);
 

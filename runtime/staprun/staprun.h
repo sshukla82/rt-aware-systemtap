@@ -46,6 +46,17 @@
 
 #define err(args...) {fprintf(stderr,"%s:%d ",__FUNCTION__, __LINE__); fprintf(stderr,args); }
 
+/* works for any function that returns 0 on success */
+#define do_cap(cap,func,args...) ({			\
+			int _rc, _saved_errno;		\
+			add_cap(cap);			\
+			_rc = func(args);		\
+			_saved_errno = errno;		\
+			del_cap(cap);			\
+			errno = _saved_errno;		\
+			_rc;				\
+		})					\
+		
 /* we define this so we are compatible with old transport, but we don't have to use it. */
 #define STP_OLD_TRANSPORT
 #include "../transport/transport_msgs.h"
