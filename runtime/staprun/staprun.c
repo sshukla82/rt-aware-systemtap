@@ -330,7 +330,8 @@ cleanup(int rc)
 		add_cap(CAP_SYS_MODULE);
 		ret = delete_module(modname, 0);
 		del_cap(CAP_SYS_MODULE);
-		printf("delete_module returned %ld\n", ret);
+		if (ret)
+			printf("delete_module returned %ld\n", ret);
 	}
 }
 
