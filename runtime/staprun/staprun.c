@@ -21,68 +21,15 @@
  */
 
 #include "staprun.h"
-#include "common.h"
-#include <pwd.h>
-#include <sys/mount.h>
 
 extern char *optarg;
 extern int optopt;
 extern int optind;
 
-/* variables needed by parse_args() */
-int verbose;
-int target_pid;
-unsigned int buffer_size;
-char *target_cmd;
-char *outfile_name;
-int attach_mod;
-int load_only;
-
 char modname[128];
 char *modpath = NULL;
 #define MAXMODOPTIONS 64
 char *modoptions[MAXMODOPTIONS];
-
-/* globals */
-int control_channel = 0;
-int ncpus;
-int use_old_transport = 0;
-
-
-
-static void
-path_parse_modname (char *path)
-{
-	char *mptr = rindex (path, '/');
-	if (mptr == NULL) 
-		mptr = path;
-	else
-		mptr++;
-
-	if (strlen(mptr) >= sizeof(modname)) {
-		err("Module name larger than modname buffer.\n");
-		exit (-1);
-	}
-	strcpy(modname, mptr);			
-	
-	mptr = rindex(modname, '.');
-	if (mptr)
-		*mptr = '\0';
-}
-
-static void
-setup_main_signals()
-{
-	struct sigaction a;
-	memset(&a, 0, sizeof(a));
-	sigfillset(&a.sa_mask);
-	a.sa_handler = SIG_IGN;
-
-	sigaction(SIGINT, &a, NULL);
-	sigaction(SIGTERM, &a, NULL);
-	sigaction(SIGHUP, &a, NULL);
-	sigaction(SIGQUIT, &a, NULL);
-}
 
 static int
 run_as(uid_t uid, gid_t gid, const char *path, char *const argv[])
@@ -120,126 +67,6 @@ run_as(uid_t uid, gid_t gid, const char *path, char *const argv[])
 	return -1;
 }
 
-#define DEBUGFSDIR "/sys/kernel/debug"
-#define RELAYFSDIR "/mnt/relay"
-
-static int
-mountfs(void)
-{
-	struct stat sb;
-	struct statfs st;
-	int rc;
-
-	/* If the debugfs dir is already mounted correctly, we're done. */
- 	if (statfs(DEBUGFSDIR, &st) == 0
-	    && (int) st.f_type == (int) DEBUGFS_MAGIC)
-		return 0;
-
-	/* If DEBUGFSDIR exists (and is a directory), try to mount
-	 * DEBUGFSDIR. */
-	rc = stat(DEBUGFSDIR, &sb);
-	if (rc == 0 && S_ISDIR(sb.st_mode)) {
-		/* If we can mount the debugfs dir correctly, we're done. */
-		add_cap(CAP_SYS_ADMIN);
-		rc = mount("debugfs", DEBUGFSDIR, "debugfs", 0, NULL); 
-		del_cap(CAP_SYS_ADMIN);
-		if (rc == 0)
-			return 0;
-		/* If we got ENODEV, that means that debugfs isn't
-		 * supported, so we'll need try try relayfs.  If we
-		 * didn't get ENODEV, we got a real error. */
-		else if (errno != ENODEV) {
-			fprintf(stderr, "ERROR: Couldn't mount %s: %s\n",
-				DEBUGFSDIR, strerror(errno));
-			return -1;
-		}
-	}
-	
-	/* DEBUGFSDIR couldn't be mounted.  So, try RELAYFSDIR. */
-
-	/* If the relayfs dir is already mounted correctly, we're done. */
-	if (statfs(RELAYFSDIR, &st) == 0
-	    && (int)st.f_type == (int)RELAYFS_MAGIC)
-		return 0;
-
-	/* Ensure that RELAYFSDIR exists and is a directory. */
-	rc = stat(RELAYFSDIR, &sb);
-	if (rc == 0 && ! S_ISDIR(sb.st_mode)) {
-		fprintf(stderr, "ERROR: %s exists but isn't a directory.\n",
-			RELAYFSDIR);
-		return -1;
-	}
-	else if (rc < 0) {
-		mode_t old_umask;
-		int saved_errno;
-		gid_t gid = getgid();
-		uid_t uid = getuid();
-
-		/* To ensure the directory gets created with the proper
-		 * permissions, set umask to a known value. */
-		old_umask = umask(0002);
-
-		/* To ensure the directory gets created with the
-		 * proper group, we'll have to temporarily switch to
-		 * root. */
-		add_cap(CAP_SETUID); add_cap(CAP_SETGID);
-		if (setuid(0) < 0) {
-			fprintf(stderr,
-				"ERROR: Couldn't change user while creating %s: %s\n",
-				RELAYFSDIR, strerror(errno));
-			return -1;
-		}
-		if (setgid(0) < 0) {
-			fprintf(stderr,
-				"ERROR: Couldn't change group while creating %s: %s\n",
-				RELAYFSDIR, strerror(errno));
-			return -1;
-		}
-
-		/* Try to create the directory, saving the return
-		 * status and errno value. */
-		rc = mkdir(RELAYFSDIR, 0755);
-		saved_errno = errno;
-
-		/* Restore everything we changed. */
-		if (setgid(gid) < 0) {
-			fprintf(stderr,
-				"ERROR: Couldn't restore group while creating %s: %s\n",
-				RELAYFSDIR, strerror(errno));
-			return -1;
-		}
-		if (setuid(uid) < 0) {
-			fprintf(stderr,
-				"ERROR: Couldn't restore user while creating %s: %s\n",
-				RELAYFSDIR, strerror(errno));
-			return -1;
-		}
-
-		/* Don't need this because the setuid() calls clear the effective set */
-		/*del_cap(CAP_SETUID); del_cap(CAP_SETGID); */
-
-		umask(old_umask);
-
-		/* If creating the directory failed, error out. */
-		if (rc < 0) {
-			fprintf(stderr, "ERROR: Couldn't create %s: %s\n",
-				RELAYFSDIR, strerror(saved_errno));
-			return -1;
-		}
-	}
-
-	/* Now that we're sure the directory exists, try mounting
-	 * RELAYFSDIR. */
-	add_cap(CAP_SYS_ADMIN);
-	rc = mount("relayfs", RELAYFSDIR, "relayfs", 0, NULL); 
-	del_cap(CAP_SYS_ADMIN);
-	if (rc < 0) {
-		fprintf(stderr, "ERROR: Couldn't mount %s: %s\n",
-			RELAYFSDIR, strerror(errno));
-		return -1;
-	}
-	return 0;
-}
 
 static int
 run_stapio(char **argv)
@@ -249,72 +76,17 @@ run_stapio(char **argv)
 }
 
 
-extern long init_module(void *, unsigned long, const char *);
-#define streq(a,b) (strcmp((a),(b)) == 0)
-static void *grab_file(const char *filename, unsigned long *size)
-{
-	unsigned int max = 16384;
-	int ret, fd;
-	void *buffer = malloc(max);
-	if (!buffer)
-		return NULL;
-
-	if (streq(filename, "-"))
-		fd = dup(STDIN_FILENO);
-	else
-		fd = open(filename, O_RDONLY, 0);
-
-	if (fd < 0)
-		return NULL;
-
-	*size = 0;
-	while ((ret = read(fd, buffer + *size, max - *size)) > 0) {
-		*size += ret;
-		if (*size == max)
-			buffer = realloc(buffer, max *= 2);
-	}
-	if (ret < 0) {
-		free(buffer);
-		buffer = NULL;
-	}
-	close(fd);
-	return buffer;
-}
-
 int
 init_staprun(void)
 {
-	char bufcmd[128];
-
 	dbug(2, "init_staprun\n");
 
 	if (mountfs() < 0)
 		return -1;
 
-	/* insert module */
-	if (! attach_mod) {
-		long ret;
-		void *file;
-		unsigned long len;
+	if (insert_module() < 0)
+		return -1;
 
-		dbug(2, "inserting module\n");
-		sprintf(bufcmd, "_stp_bufsize=%d", buffer_size);
-		file = grab_file(modpath, &len);
-		if (!file) {
-			fprintf(stderr, "insmod: can't read '%s': %s\n",
-				modpath, strerror(errno));
-			exit(1);
-		}
-		add_cap(CAP_SYS_MODULE);
-		ret = init_module(file, len, bufcmd);
-		del_cap(CAP_SYS_MODULE);
-
-		if (ret != 0) {
-			fprintf(stderr, "insmod: error inserting '%s': %li %s\n",
-				modpath, ret, strerror(errno));
-			exit(1);	
-		}
-	}
 	return 0;
 }
 	
@@ -387,15 +159,15 @@ main(int argc, char **argv)
 		usage(argv[0]);
 
 	/* now bump the priority */
-	 add_cap(CAP_SYS_NICE);
+	add_cap(CAP_SYS_NICE);
 	if (setpriority (PRIO_PROCESS, 0, -10) < 0)
 		perror("setpriority");
-	 del_cap(CAP_SYS_NICE);
-
+	del_cap(CAP_SYS_NICE);
+	
 	if (init_staprun())
 		exit(1);
 
-	setup_main_signals();
+	setup_staprun_signals();
 
 	rc = run_stapio(argv);
 	cleanup(rc);

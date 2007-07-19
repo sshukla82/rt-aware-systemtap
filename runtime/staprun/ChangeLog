@@ -1,3 +1,7 @@
+2007-07-19  Martin Hunt  <hunt@redhat.com>
+
+	* staprun_funcs.c: New.
+
 2007-07-18  Martin Hunt  <hunt@redhat.com>
 
 	* staprun.c (mountfs): The setuid() calls clear the effective 

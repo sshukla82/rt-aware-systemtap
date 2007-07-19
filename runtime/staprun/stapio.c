@@ -44,25 +44,6 @@ char *modoptions[MAXMODOPTIONS];
 uid_t cmd_uid;
 gid_t cmd_gid;
 
-static void path_parse_modname (char *path)
-{
-	char *mptr = rindex (path, '/');
-	if (mptr == NULL) 
-		mptr = path;
-	else
-		mptr++;
-
-	if (strlen(mptr) >= sizeof(modname)) {
-		err("Module name larger than modname buffer.\n");
-		exit (-1);
-	}
-	strcpy(modname, mptr);			
-	
-	mptr = rindex(modname, '.');
-	if (mptr)
-		*mptr = '\0';
-}
-
 int main(int argc, char **argv)
 {
 	setup_signals();

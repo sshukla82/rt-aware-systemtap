@@ -20,13 +20,11 @@ extern char *outfile_name;
 extern int attach_mod;
 extern int load_only;
 
-extern void parse_args(int argc, char **argv);
-extern void usage(char *prog);
+/* common.c functions */
+void parse_args(int argc, char **argv);
+void usage(char *prog);
+void path_parse_modname (char *path);
+void setup_signals(void);
 
-extern void fatal_handler (int signum);
-extern void setup_signals(void);
 
-extern int using_old_transport(void);
-
-extern int check_permissions(void);
 

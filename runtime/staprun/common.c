@@ -13,16 +13,22 @@
 #include "staprun.h"
 #include "common.h"
 #include <sys/types.h>
-#include <grp.h>
 #include <unistd.h>
-#include <sys/utsname.h>
 
 extern char *optarg;
 extern int optopt;
 extern int optind;
 
-void
-parse_args(int argc, char **argv)
+/* variables needed by parse_args() */
+int verbose;
+int target_pid;
+unsigned int buffer_size;
+char *target_cmd;
+char *outfile_name;
+int attach_mod;
+int load_only;
+
+void parse_args(int argc, char **argv)
 {
 	int c;
 
@@ -97,8 +103,27 @@ void usage(char *prog)
 	exit(1);
 }
 
+void path_parse_modname (char *path)
+{
+	char *mptr = rindex (path, '/');
+	if (mptr == NULL) 
+		mptr = path;
+	else
+		mptr++;
+
+	if (strlen(mptr) >= sizeof(modname)) {
+		err("Module name larger than modname buffer.\n");
+		exit (-1);
+	}
+	strcpy(modname, mptr);			
+	
+	mptr = rindex(modname, '.');
+	if (mptr)
+		*mptr = '\0';
+}
+
 #define ERR_MSG "\nUNEXPECTED FATAL ERROR in staprun. Please file a bug report.\n"
-void fatal_handler (int signum)
+static void fatal_handler (int signum)
 {
         int rc;
         char *str = strsignal(signum);
@@ -144,191 +169,4 @@ void setup_signals(void)
 #else
 	pthread_sigmask(SIG_SETMASK, &s, NULL);
 #endif
-}
-
-int
-using_old_transport(void)
-{
-	struct utsname utsbuf;
-	int i;
-	long int kver[3];
-	char *start, *end;
-
-	if (uname(&utsbuf) != 0) {
-		fprintf(stderr,
-			"ERROR: Unable to determine kernel version, uname failed: %s\n",
-			strerror(errno));
-		return -1;
-	}
-
-	start = utsbuf.release;
-	for (i = 0; i < 3; i++) {
-		errno = 0;
-		kver[i] = strtol(start, &end, 10);
-		if (errno != 0) {
-			fprintf(stderr,
-				"ERROR: Unable to parse kernel version, strtol failed: %s\n",
-				strerror(errno));
-			return -1;
-		}
-		start = end;
-		start++;
-	}
-
-	if (KERNEL_VERSION(kver[0], kver[1], kver[2])
-	    <= KERNEL_VERSION(2, 6, 15)) {
-		dbug(2, "Using OLD TRANSPORT\n");
-		return 1;
-	}
-	return 0;
-}
-
-/*
- * Members of the 'stapusr' group can only use "blessed" modules -
- * ones in the '/lib/modules/KVER/systemtap' directory.  Make sure the
- * module path is in that directory.
- *
- * Returns: -1 on errors, 0 on failure, 1 on success.
- */
-static int
-check_path(void)
-{
-	struct utsname utsbuf;
-	char staplib_dir_path[PATH_MAX];
-	char staplib_dir_realpath[PATH_MAX];
-	char module_realpath[PATH_MAX];
-
-	/* First, we need to figure out what the kernel
-	 * version is and build the '/lib/modules/KVER/systemtap' path. */
-	if (uname(&utsbuf) != 0) {
-		fprintf(stderr,
-			"ERROR: Unable to determine kernel version, uname failed: %s\n",
-			strerror(errno));
-		return -1;
-	}
-	sprintf(staplib_dir_path, "/lib/modules/%s/systemtap",
-		utsbuf.release);
-
-	/* Use realpath() to canonicalize the module directory
-	 * path. */
-	if (realpath(staplib_dir_path, staplib_dir_realpath) == NULL) {
-		fprintf(stderr,
-			"ERROR: Unable to canonicalize path \"%s\": %s\n",
-			staplib_dir_path, strerror(errno));
-		return -1;
-	}
-
-	/* Use realpath() to canonicalize the module path. */
-	if (realpath(modpath, module_realpath) == NULL) {
-		fprintf(stderr,
-			"ERROR: Unable to canonicalize path \"%s\": %s\n",
-			modpath, strerror(errno));
-		return -1;
-	}
-
-	/* Now we've got two canonicalized paths.  Make sure
-	 * module_realpath starts with staplib_dir_realpath. */
-	if (strncmp(staplib_dir_realpath, module_realpath,
-		    strlen(staplib_dir_realpath)) != 0) {
-		fprintf(stderr,
-			"ERROR: Members of the \"stapusr\" group can only use modules within\n"
-			"  the \"%s\" directory.\n"
-			"  Module \"%s\" does not exist within that directory.\n",
-			staplib_dir_path, modpath);
-		return 0;
-	}
-	return 1;
-}
-
-/*
- * Check the user's permissions.  Is he allowed to run staprun (or is
- * he limited to "blessed" modules)?
- *
- * Returns: -1 on errors, 0 on failure, 1 on success.
- */
-int
-check_permissions(void)
-{
-	gid_t gid, gidlist[NGROUPS_MAX];
-	gid_t stapdev_gid, stapusr_gid;
-	int i, ngids;
-	struct group *stgr;
-	int path_check = 0;
-
-	/* If we're root, we can do anything. */
-	if (geteuid() == 0)
-		return 1;
-
-	/* Lookup the gid for group "stapdev" */
-	errno = 0;
-	stgr = getgrnam("stapdev");
-	/* If we couldn't find the group, just set the gid to an
-	 * invalid number.  Just because this group doesn't exist
-	 * doesn't mean the other group doesn't exist. */
-	if (stgr == NULL)
-		stapdev_gid = (gid_t)-1;
-	else
-		stapdev_gid = stgr->gr_gid;
-
-	/* Lookup the gid for group "stapusr" */
-	errno = 0;
-	stgr = getgrnam("stapusr");
-	/* If we couldn't find the group, just set the gid to an
-	 * invalid number.  Just because this group doesn't exist
-	 * doesn't mean the other group doesn't exist. */
-	if (stgr == NULL)
-		stapusr_gid = (gid_t)-1;
-	else
-		stapusr_gid = stgr->gr_gid;
-
-	/* If neither group was found, just return an error. */
-	if (stapdev_gid == (gid_t)-1 && stapusr_gid == (gid_t)-1) {
-		fprintf(stderr, "ERROR: unable to find either group \"stapdev\" or group \"stapusr\"\n");
-		return -1;
-	}
-
-	/* According to the getgroups() man page, getgroups() may not
-	 * return the effective gid, so try to match it first. */
-	gid = getegid();
-	if (gid == stapdev_gid)
-		return 1;
-	else if (gid == stapusr_gid)
-		path_check = 1;
-
-	/* Get the list of the user's groups. */
-	ngids = getgroups(NGROUPS_MAX, gidlist);
-	if (ngids < 0) {
-		fprintf(stderr, "ERROR: Unable to retrieve group list: %s\n",
-			strerror(errno));
-		return -1;
-	}
-
-	for (i = 0; i < ngids; i++) {
-		/* If the user is a member of 'stapdev', then we're
-		 *  done, since he can use staprun without any
-		 *  restrictions. */
-		if (gidlist[i] == stapdev_gid)
-			return 1;
-
-		/* If the user is a member of 'stapusr', then we'll
-		 * need to check the module path.  However, we'll keep
-		 * checking groups since it is possible the user is a
-		 * member of both groups and we haven't seen the
-		 * 'stapdev' group yet. */
-		if (gidlist[i] == stapusr_gid)
-			path_check = 1;
-	}
-
-	/* If path_check is 0, then the user isn't a member of either
-	 * group.  Error out. */
-	if (path_check == 0) {
-		fprintf(stderr, "ERROR: you must be a member of either group \"stapdev\" or group \"stapusr\"\n");
-		return 0;
-	}
-
-	/* At this point the user is only a member of the 'stapusr'
-	 * group.  Members of the 'stapusr' group can only use modules
-	 * in /lib/modules/KVER/systemtap.  Make sure the module path
-	 * is in that directory. */
-	return check_path();
 }

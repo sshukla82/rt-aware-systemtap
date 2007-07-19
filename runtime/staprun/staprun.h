@@ -1,6 +1,6 @@
 /* -*- linux-c -*-
  *
- * staprun.h - include file for staprun
+ * staprun.h - include file for staprun and stapio
  *
  * This file is part of systemtap, and is free software.  You can
  * redistribute it and/or modify it under the terms of the GNU General
@@ -35,6 +35,8 @@
 #include <linux/version.h>
 #include <sys/capability.h>
 
+#include "common.h"
+
 #define DEBUG
 #ifdef DEBUG
 #define dbug(level, args...) {if (verbose>=level) {fprintf(stderr,"%s:%d ",__FUNCTION__, __LINE__); fprintf(stderr,args);}}
@@ -50,8 +52,10 @@
 
 extern int use_old_transport;
 
-#define RELAYFS_MAGIC			0xF0B4A981
-#define DEBUGFS_MAGIC			0x64626720
+#define RELAYFS_MAGIC	0xF0B4A981
+#define DEBUGFS_MAGIC	0x64626720
+#define DEBUGFSDIR	"/sys/kernel/debug"
+#define RELAYFSDIR	"/mnt/relay"
 
 /*
  * function prototypes
@@ -75,6 +79,11 @@ int init_cap(void);
 void add_cap(cap_value_t cap);
 void del_cap(cap_value_t cap);
 void drop_cap(cap_value_t cap);
+/* staprun_funcs.c */
+void setup_staprun_signals(void);
+int insert_module(void);
+int mountfs(void);
+int check_permissions(void);
 
 /*
  * variables 
@@ -85,7 +94,7 @@ extern int ncpus;
 /* flags */
 extern int verbose;
 extern unsigned int buffer_size;
-extern char modname[];
+extern char modname[128];
 extern char *modpath;
 extern char *modoptions[];
 extern int target_pid;
