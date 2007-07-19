@@ -1,5 +1,9 @@
 2007-07-19  David Smith  <dsmith@redhat.com>
 
+	* staprun.c (main): Starts module options at index 0.
+	* staprun_funcs.c (insert_module): Passes extra user-specified
+	module options to module.
+
 	* relay_old.c (open_relayfs_files): Added debug message.
 	(init_oldrelayfs): Errors out if open_relayfs_files() couldn't
 	open any files.

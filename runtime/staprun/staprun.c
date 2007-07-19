@@ -138,7 +138,7 @@ int main(int argc, char **argv)
 			fprintf(stderr, "Cannot have module options with attach (-A).\n");
 			usage(argv[0]);
 		} else {
-			unsigned start_idx = 3; /* reserve three slots in modoptions[] */
+			unsigned start_idx = 0;
 			while (optind < argc && start_idx+1 < MAXMODOPTIONS)
 				modoptions[start_idx++] = argv[optind++];
 			modoptions[start_idx] = NULL;

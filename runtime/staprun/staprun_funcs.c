@@ -59,32 +59,52 @@ static void *grab_file(const char *filename, unsigned long *size)
 
 int insert_module(void)
 {
-	if (!attach_mod) {
-		int saved_errno;
-		long ret;
-		void *file;
-		unsigned long len;
-		char bufcmd[128];
+	int i;
+	long ret;
+	void *file;
+	unsigned long len;
+	char *opts;
 		
-		dbug(2, "inserting module\n");
-		sprintf(bufcmd, "_stp_bufsize=%d", buffer_size);
-		file = grab_file(modpath, &len);
-		if (!file) {
-			fprintf(stderr, "insmod: can't read '%s': %s\n",
-				modpath, strerror(errno));
+	if (attach_mod)
+		return 0;
+
+	dbug(2, "inserting module\n");
+
+	opts = malloc(128);
+	if (opts == NULL) {
+		fprintf(stderr, "ERROR: allocating memory failed: %s\n",
+			strerror(errno));
+		return -1;
+	}
+	sprintf(opts, "_stp_bufsize=%d", buffer_size);
+	for (i = 0; modoptions[i] != NULL; i++) {
+		opts = realloc(opts, strlen(opts) + strlen(modoptions[i]) + 2);
+		if (opts == NULL) {
+			fprintf(stderr,
+				"ERROR: reallocating memory failed: %s\n",
+				strerror(errno));
 			return -1;
 		}
-		add_cap(CAP_SYS_MODULE);
-		ret = init_module(file, len, bufcmd);
-		saved_errno = errno;
-		del_cap(CAP_SYS_MODULE);
-		
-		if (ret != 0) {
-			fprintf(stderr, "insmod: error inserting '%s': %li %s\n",
-				modpath, ret, strerror(saved_errno));
-			return -1; 
-		}
+		strcat(opts, " ");
+		strcat(opts, modoptions[i]);
 	}
+	dbug(2, "module options: %s\n", opts);
+
+	file = grab_file(modpath, &len);
+	if (!file) {
+		free(opts);
+		fprintf(stderr, "insmod: can't read '%s': %s\n",
+			modpath, strerror(errno));
+		return -1;
+	}
+	ret = do_cap(CAP_SYS_MODULE, init_module, file, len, opts);
+	if (ret != 0) {
+		free(opts);
+		fprintf(stderr, "insmod: error inserting '%s': %s\n",
+			modpath, strerror(-ret));
+		return -1; 
+	}
+	free(opts);
 	return 0;
 }
 
