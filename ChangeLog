@@ -1,3 +1,10 @@
+2007-07-19  David Smith  <dsmith@redhat.com>
+
+	* configure.ac: Checks for libcap availability.
+	* configure: Regenerated.
+	* systemtap.spec.in: Added BuildReq for libcap-devl (and removed
+	sudo requirement).
+
 2007-07-19  Martin Hunt  <hunt@redhat.com>
 
 	* Makefile.am (staprun_SOURCES): Added staprun_funcs.c

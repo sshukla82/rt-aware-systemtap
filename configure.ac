@@ -104,6 +104,9 @@ AC_CHECK_HEADERS(crash/defs.h,
 ])
 AM_CONDITIONAL(BUILD_CRASHMOD, test $build_crashmod = yes)
 
+AC_CHECK_LIB(cap, cap_init,,[
+	AC_MSG_ERROR([cannot find required libcap library (libcap-devel may need to be installed)])])
+
 mysql=false
 
 SAVE_LDFLAGS=$LDFLAGS

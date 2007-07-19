@@ -47,6 +47,7 @@ BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 
 Requires: kernel >= 2.6.9-11
 BuildRequires: glib2-devel >= 2.0.0
+BuildRequires: libcap-devel
 # make check
 BuildRequires: dejagnu
 %if %{sqlite}
@@ -59,7 +60,6 @@ Requires: glib2 >= 2.0.0
 Requires: gcc make
 # Suggest: kernel-debuginfo
 Requires: systemtap-runtime = %{version}-%{release}
-Requires: sudo
 
 %if %{bundled_elfutils}
 Source1: elfutils-%{elfutils_version}.tar.gz
