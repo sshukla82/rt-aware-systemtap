@@ -1,3 +1,9 @@
+2007-07-18  Martin Hunt  <hunt@redhat.com>
+
+	* staprun.c (mountfs): The setuid() calls clear the effective 
+	capability set, so need to add CAP_SYS_ADMIN before the
+	mount call.
+
 2007-07-18  David Smith  <dsmith@redhat.com>
 
 	* staprun.c (mountfs): Sets uid to root before making directory

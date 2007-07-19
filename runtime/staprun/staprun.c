@@ -140,9 +140,11 @@ mountfs(void)
 	rc = stat(DEBUGFSDIR, &sb);
 	if (rc == 0 && S_ISDIR(sb.st_mode)) {
 		/* If we can mount the debugfs dir correctly, we're done. */
-		if (mount("debugfs", DEBUGFSDIR, "debugfs", 0, NULL) == 0) {
+		add_cap(CAP_SYS_ADMIN);
+		rc = mount("debugfs", DEBUGFSDIR, "debugfs", 0, NULL); 
+		del_cap(CAP_SYS_ADMIN);
+		if (rc == 0)
 			return 0;
-		}
 		/* If we got ENODEV, that means that debugfs isn't
 		 * supported, so we'll need try try relayfs.  If we
 		 * didn't get ENODEV, we got a real error. */
@@ -212,7 +214,10 @@ mountfs(void)
 				RELAYFSDIR, strerror(errno));
 			return -1;
 		}
-		del_cap(CAP_SETUID); del_cap(CAP_SETGID);
+
+		/* Don't need this because the setuid() calls clear the effective set */
+		/*del_cap(CAP_SETUID); del_cap(CAP_SETGID); */
+
 		umask(old_umask);
 
 		/* If creating the directory failed, error out. */
@@ -225,7 +230,10 @@ mountfs(void)
 
 	/* Now that we're sure the directory exists, try mounting
 	 * RELAYFSDIR. */
-	if (mount("relayfs", RELAYFSDIR, "relayfs", 0, NULL) < 0) {
+	add_cap(CAP_SYS_ADMIN);
+	rc = mount("relayfs", RELAYFSDIR, "relayfs", 0, NULL); 
+	del_cap(CAP_SYS_ADMIN);
+	if (rc < 0) {
 		fprintf(stderr, "ERROR: Couldn't mount %s: %s\n",
 			RELAYFSDIR, strerror(errno));
 		return -1;
@@ -280,12 +288,8 @@ init_staprun(void)
 
 	dbug(2, "init_staprun\n");
 
-	add_cap(CAP_SYS_ADMIN);
-	if (mountfs() < 0) {
-		del_cap(CAP_SYS_ADMIN);
+	if (mountfs() < 0)
 		return -1;
-	}
-	del_cap(CAP_SYS_ADMIN);
 
 	/* insert module */
 	if (! attach_mod) {
