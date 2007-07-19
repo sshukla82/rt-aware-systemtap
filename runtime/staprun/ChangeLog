@@ -1,8 +1,15 @@
 2007-07-19  Martin Hunt  <hunt@redhat.com>
 
+	* staprun.h ((fatal): New macro.
+	(ferror): Ditto.
+	Also include protos from common.c.
+	* staprun .c: Cleanup. Use new macros.
+	* common.h: Deleted.
+	
+2007-07-19  Martin Hunt  <hunt@redhat.com>	
+
 	* staprun.h (do_cap): New macro. 
 	* staprun.c (main): Use do_cap().
-
 	* staprun_funcs.c: New.
 
 2007-07-18  Martin Hunt  <hunt@redhat.com>

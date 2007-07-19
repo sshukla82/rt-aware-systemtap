@@ -11,7 +11,6 @@
  */
 
 #include "staprun.h"
-#include "common.h"
 #include <sys/utsname.h>
 
 /* globals */

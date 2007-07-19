@@ -11,13 +11,9 @@
  */
 
 #include "staprun.h"
-#include "common.h"
 #include <sys/types.h>
 #include <unistd.h>
 
-extern char *optarg;
-extern int optopt;
-extern int optind;
 
 /* variables needed by parse_args() */
 int verbose;
@@ -111,11 +107,10 @@ void path_parse_modname (char *path)
 	else
 		mptr++;
 
-	if (strlen(mptr) >= sizeof(modname)) {
-		err("Module name larger than modname buffer.\n");
-		exit (-1);
-	}
-	strcpy(modname, mptr);			
+	if (strlen(mptr) >= sizeof(modname))
+		fatal("Module name larger than modname buffer.\n");
+
+	strcpy(modname, mptr);
 	
 	mptr = rindex(modname, '.');
 	if (mptr)

@@ -35,8 +35,6 @@
 #include <linux/version.h>
 #include <sys/capability.h>
 
-#include "common.h"
-
 #define DEBUG
 #ifdef DEBUG
 #define dbug(level, args...) {if (verbose>=level) {fprintf(stderr,"%s:%d ",__FUNCTION__, __LINE__); fprintf(stderr,args);}}
@@ -46,7 +44,19 @@
 
 #define err(args...) {fprintf(stderr,"%s:%d ",__FUNCTION__, __LINE__); fprintf(stderr,args); }
 
-/* works for any function that returns 0 on success */
+#define fatal(args...) {						\
+		fprintf(stderr,"%s:%d: ",__FUNCTION__, __LINE__);	\
+		fprintf(stderr,args);					\
+		exit(-1);						\
+	}								\
+		
+/* like perror, but exits */
+#define ferror(msg) {						  \
+		fprintf(stderr,"%s:%d: ",__FUNCTION__, __LINE__); \
+		perror(msg);					  \
+		exit(-1);					  \
+	}							  \
+		
 #define do_cap(cap,func,args...) ({			\
 			int _rc, _saved_errno;		\
 			add_cap(cap);			\
@@ -95,6 +105,11 @@ void setup_staprun_signals(void);
 int insert_module(void);
 int mountfs(void);
 int check_permissions(void);
+/* common.c functions */
+void parse_args(int argc, char **argv);
+void usage(char *prog);
+void path_parse_modname (char *path);
+void setup_signals(void);
 
 /*
  * variables 
@@ -113,6 +128,11 @@ extern char *target_cmd;
 extern char *outfile_name;
 extern int attach_mod;
 extern int load_only;
+
+/* getopt variables */
+extern char *optarg;
+extern int optopt;
+extern int optind;
 
 /* maximum number of CPUs we can handle */
 #define NR_CPUS 256

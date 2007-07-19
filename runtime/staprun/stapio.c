@@ -21,7 +21,6 @@
  */
 
 #include "staprun.h"
-#include "common.h"
 #include <pwd.h>
 
 extern char *optarg;
