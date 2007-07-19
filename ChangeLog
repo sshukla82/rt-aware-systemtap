@@ -1,5 +1,7 @@
 2007-07-19  David Smith  <dsmith@redhat.com>
 
+	* configure: Regenerated.
+
 	* configure.ac: Checks for libcap availability.
 	* configure: Regenerated.
 	* systemtap.spec.in: Added BuildReq for libcap-devl (and removed
