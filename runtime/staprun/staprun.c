@@ -43,14 +43,11 @@ run_as(uid_t uid, gid_t gid, const char *path, char *const argv[])
 		 * switching to a non-root user, this won't allow
 		 * that process to switch back to root (since the
 		 * original process is setuid). */
-
 		if (uid != getuid()) {
-			add_cap(CAP_SETUID); add_cap(CAP_SETGID);
-			if (setresgid(gid, gid, gid) < 0)
+			if (do_cap(CAP_SETGID, setresgid, gid, gid, gid) < 0)
 				ferror("setresgid");
-			if (setresuid(uid, uid, uid) < 0)
+			if (do_cap(CAP_SETUID, setresuid, uid, uid, uid) < 0)
 				ferror("setresuid");
-			del_cap(CAP_SETUID); del_cap(CAP_SETGID);
 		}
 
 		/* Actually run the command. */
@@ -93,13 +90,20 @@ int init_staprun(void)
 	
 static void cleanup(int rc)
 {
+	long ret;
+
 	/* rc == 2 means disconnected */
 	if (rc == 2)
 		return;
 
 	dbug(2, "removing module %s...\n", modname);
-	if (do_cap(CAP_SYS_MODULE, delete_module, modname, 0) != 0)
-		perror("delete_module");
+	ret = do_cap(CAP_SYS_MODULE, delete_module, modname, 0);
+	if (ret != 0) {
+		/* Note that delete_module() returns a negative
+		 * version of the error. */
+		fprintf(stderr, "ERROR: delete_module failed %s\n",
+			strerror(-ret));
+	}
 }
 
 int main(int argc, char **argv)

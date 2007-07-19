@@ -1,3 +1,8 @@
+2007-07-19  David Smith  <dsmith@redhat.com>
+
+	* staprun.c (run_as): Uses do_cap macro.
+	(cleanup): Improved error message.
+
 2007-07-19  Martin Hunt  <hunt@redhat.com>
 
 	* staprun.h ((fatal): New macro.
