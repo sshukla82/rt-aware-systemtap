@@ -1,5 +1,10 @@
 2007-07-19  David Smith  <dsmith@redhat.com>
 
+	* configure.ac: Changed AC_CHECK_LIB to AC_CHECK_HEADERS for
+	libcap test (since AC_CHECK_LIB added libcap to the link list for
+	all programs).
+	* configure: Regenerated.
+
 	* configure: Regenerated.
 
 	* configure.ac: Checks for libcap availability.
