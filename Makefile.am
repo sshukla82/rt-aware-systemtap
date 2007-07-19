@@ -51,7 +51,8 @@ install-elfutils:
 install-exec-local: install-elfutils
 endif
 
-staprun_SOURCES = runtime/staprun/staprun.c runtime/staprun/common.c runtime/staprun/cap.c
+staprun_SOURCES = runtime/staprun/staprun.c runtime/staprun/staprun_funcs.c\
+	runtime/staprun/common.c runtime/staprun/cap.c
 
 staprun_CPPFLAGS = $(AM_CPPFLAGS) -DSINGLE_THREADED
 staprun_CFLAGS = @PROCFLAGS@ $(AM_CFLAGS)
