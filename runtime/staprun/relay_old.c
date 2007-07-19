@@ -83,6 +83,7 @@ static int open_relayfs_files(int cpu, const char *relay_filebase, const char *p
 	status[cpu].info.cpu = cpu;
 
 	sprintf(tmp, "%s%d", relay_filebase, cpu);
+	dbug(2, "Opening %s.\n", tmp); 
 	relay_fd[cpu] = open(tmp, O_RDONLY | O_NONBLOCK);
 	if (relay_fd[cpu] < 0) {
 		relay_fd[cpu] = 0;
@@ -273,6 +274,11 @@ int init_oldrelayfs(void)
 
 	ncpus = i;
 	dbug(2, "ncpus=%d\n", ncpus);
+
+	if (ncpus == 0) {
+		err("couldn't open relayfs files.\n");
+		return -1;
+	}
 
 	for (i = 0; i < ncpus; i++) {
 		/* create a thread for each per-cpu buffer */

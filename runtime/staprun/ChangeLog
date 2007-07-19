@@ -1,5 +1,9 @@
 2007-07-19  David Smith  <dsmith@redhat.com>
 
+	* relay_old.c (open_relayfs_files): Added debug message.
+	(init_oldrelayfs): Errors out if open_relayfs_files() couldn't
+	open any files.
+
 	* staprun.c (run_as): Uses do_cap macro.
 	(cleanup): Improved error message.
 
