@@ -1,5 +1,10 @@
 2007-07-19  David Smith  <dsmith@redhat.com>
 
+	* configure.ac: Added AC_PROG_MKDIR_P, which seems to be a new
+	autoconf requirement.
+	* configure: Regenerated.
+	* .cvsignore: Removed stp_check.
+
 	* configure.ac: Changed AC_CHECK_LIB to AC_CHECK_HEADERS for
 	libcap test (since AC_CHECK_LIB added libcap to the link list for
 	all programs).
