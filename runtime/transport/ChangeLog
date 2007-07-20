@@ -1,3 +1,8 @@
+2007-07-20  David Smith  <dsmith@redhat.com>
+
+	* control.c (_stp_register_ctl_channel): Bug fix - sets
+	owner/group after checking for NULL.
+
 2007-07-19  Martin Hunt  <hunt@redhat.com>
 
 	* relayfs.c (utt_trace_setup): Set ownership of percpu files.

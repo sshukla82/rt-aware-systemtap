@@ -265,10 +265,10 @@ static int _stp_register_ctl_channel (void)
 
 	/* create [debugfs]/systemtap/module_name/cmd  */
 	_stp_cmd_file = debugfs_create_file("cmd", 0600, _stp_utt->dir, NULL, &_stp_ctl_fops_cmd);
-	_stp_cmd_file->d_inode->i_uid = _stp_uid;;
-	_stp_cmd_file->d_inode->i_gid = _stp_gid;
 	if (_stp_cmd_file == NULL) 
 		goto err0;
+	_stp_cmd_file->d_inode->i_uid = _stp_uid;;
+	_stp_cmd_file->d_inode->i_gid = _stp_gid;
 	return 0;
 
 err0:
