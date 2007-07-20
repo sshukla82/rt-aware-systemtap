@@ -141,9 +141,8 @@ int mountfs(void)
 	rc = stat(DEBUGFSDIR, &sb);
 	if (rc == 0 && S_ISDIR(sb.st_mode)) {
 		/* If we can mount the debugfs dir correctly, we're done. */
-		add_cap(CAP_SYS_ADMIN);
-		rc = mount("debugfs", DEBUGFSDIR, "debugfs", 0, NULL); 
-		del_cap(CAP_SYS_ADMIN);
+		rc = do_cap(CAP_SYS_ADMIN, mount, "debugfs", DEBUGFSDIR,
+			    "debugfs", 0, NULL); 
 		if (rc == 0)
 			return 0;
 		/* If we got ENODEV, that means that debugfs isn't
@@ -183,14 +182,13 @@ int mountfs(void)
 		/* To ensure the directory gets created with the
 		 * proper group, we'll have to temporarily switch to
 		 * root. */
-		add_cap(CAP_SETUID); add_cap(CAP_SETGID);
-		if (setuid(0) < 0) {
+		if (do_cap(CAP_SETUID, setuid, 0) < 0) {
 			fprintf(stderr,
 				"ERROR: Couldn't change user while creating %s: %s\n",
 				RELAYFSDIR, strerror(errno));
 			return -1;
 		}
-		if (setgid(0) < 0) {
+		if (do_cap(CAP_SETGID, setgid, 0) < 0) {
 			fprintf(stderr,
 				"ERROR: Couldn't change group while creating %s: %s\n",
 				RELAYFSDIR, strerror(errno));
@@ -203,22 +201,18 @@ int mountfs(void)
 		saved_errno = errno;
 
 		/* Restore everything we changed. */
-		if (setgid(gid) < 0) {
+		if (do_cap(CAP_SETGID, setgid, gid) < 0) {
 			fprintf(stderr,
 				"ERROR: Couldn't restore group while creating %s: %s\n",
 				RELAYFSDIR, strerror(errno));
 			return -1;
 		}
-		if (setuid(uid) < 0) {
+		if (do_cap(CAP_SETUID, setuid, uid) < 0) {
 			fprintf(stderr,
 				"ERROR: Couldn't restore user while creating %s: %s\n",
 				RELAYFSDIR, strerror(errno));
 			return -1;
 		}
-
-		/* Don't need this because the setuid() calls clear the effective set */
-		/*del_cap(CAP_SETUID); del_cap(CAP_SETGID); */
-
 		umask(old_umask);
 
 		/* If creating the directory failed, error out. */
@@ -231,10 +225,8 @@ int mountfs(void)
 
 	/* Now that we're sure the directory exists, try mounting
 	 * RELAYFSDIR. */
-	add_cap(CAP_SYS_ADMIN);
-	rc = mount("relayfs", RELAYFSDIR, "relayfs", 0, NULL); 
-	del_cap(CAP_SYS_ADMIN);
-	if (rc < 0) {
+	if (do_cap(CAP_SYS_ADMIN, mount, "relayfs", RELAYFSDIR,
+		   "relayfs", 0, NULL) < 0) {
 		fprintf(stderr, "ERROR: Couldn't mount %s: %s\n",
 			RELAYFSDIR, strerror(errno));
 		return -1;

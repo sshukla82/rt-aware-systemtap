@@ -1,5 +1,7 @@
 2007-07-20  David Smith  <dsmith@redhat.com>
 
+	* staprun_funcs.c (mountfs): Uses do_cap macro.
+
 	* staprun_funcs.c (moderror): Added function.
 	(insert_module): Improved error message by calling moderror().
 	* staprun.h: Added moderror() prototype.
