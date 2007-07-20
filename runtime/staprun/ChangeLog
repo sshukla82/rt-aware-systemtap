@@ -1,5 +1,8 @@
 2007-07-20  David Smith  <dsmith@redhat.com>
 
+	* staprun_funcs.c (grab_file): Removed function.
+	(insert_module): Calls mmap() instead of grab_file().
+
 	* staprun_funcs.c (mountfs): Uses do_cap macro.
 
 	* staprun_funcs.c (moderror): Added function.

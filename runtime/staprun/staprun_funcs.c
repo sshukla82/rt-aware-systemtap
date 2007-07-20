@@ -30,33 +30,6 @@ void setup_staprun_signals(void)
 
 extern long init_module(void *, unsigned long, const char *);
 
-static void *grab_file(const char *filename, unsigned long *size)
-{
-	unsigned int max = 16384;
-	int ret, fd;
-	void *buffer = malloc(max);
-	if (!buffer)
-		return NULL;
-
-	fd = open(filename, O_RDONLY, 0);
-
-	if (fd < 0)
-		return NULL;
-	
-	*size = 0;
-	while ((ret = read(fd, buffer + *size, max - *size)) > 0) {
-		*size += ret;
-		if (*size == max)
-			buffer = realloc(buffer, max *= 2);
-	}
-	if (ret < 0) {
-		free(buffer);
-		buffer = NULL;
-	}
-	close(fd);
-	return buffer;
-}
-
 /* Module errors get translated. */
 const char *moderror(int err)
 {
@@ -79,8 +52,9 @@ int insert_module(void)
 	int i;
 	long ret;
 	void *file;
-	unsigned long len;
 	char *opts;
+	int fd, saved_errno;
+	struct stat sbuf;
 		
 	if (attach_mod)
 		return 0;
@@ -107,21 +81,46 @@ int insert_module(void)
 	}
 	dbug(2, "module options: %s\n", opts);
 
-	file = grab_file(modpath, &len);
-	if (!file) {
-		free(opts);
-		fprintf(stderr, "insmod: can't read '%s': %s\n",
+	/* Open the module file. */
+	fd = open(modpath, O_RDONLY);
+	if (fd < 0) {
+		fprintf(stderr, "ERROR: Error opening '%s': %s\n",
 			modpath, strerror(errno));
 		return -1;
 	}
-	ret = do_cap(CAP_SYS_MODULE, init_module, file, len, opts);
-	if (ret != 0) {
+	
+	/* Now that the file is open, figure out how big it is. */
+	if (fstat(fd, &sbuf) < 0) {
+		close(fd);
+		fprintf(stderr, "ERROR: Error stat'ing '%s': %s\n",
+			modpath, strerror(errno));
+		return -1;
+	}
+
+	/* mmap in the entire module. */
+	file = mmap(NULL, sbuf.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+	if (file == MAP_FAILED) {
+		close(fd);
 		free(opts);
+		fprintf(stderr, "ERROR: Error mapping '%s': %s\n",
+			modpath, strerror(errno));
+		return -1;
+	}
+	    
+	/* Actually insert the module */
+	ret = do_cap(CAP_SYS_MODULE, init_module, file, sbuf.st_size, opts);
+	saved_errno = errno;
+
+	/* Cleanup. */
+	free(opts);
+	munmap(file, sbuf.st_size);
+	close(fd);
+
+	if (ret != 0) {
 		fprintf(stderr, "ERROR: Error inserting module '%s': %s\n",
-			modpath, moderror(errno));
+			modpath, moderror(saved_errno));
 		return -1; 
 	}
-	free(opts);
 	return 0;
 }
 
