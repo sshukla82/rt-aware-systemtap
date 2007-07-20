@@ -1,3 +1,9 @@
+2007-07-19  Martin Hunt  <hunt@redhat.com>
+
+	* relayfs.c (utt_trace_setup): Set ownership of percpu files.
+	* procfs.c (_stp_register_ctl_channel): Set ownership
+	of percpu files for bulkmode.
+
 2007-07-18  Martin Hunt  <hunt@redhat.com>
 
 	* utt.c (utt_create_buf_file_callback): Set file

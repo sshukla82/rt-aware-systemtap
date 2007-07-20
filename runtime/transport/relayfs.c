@@ -80,6 +80,8 @@ static void _stp_remove_relay_root(struct dentry *root)
 struct utt_trace *utt_trace_setup(struct utt_trace_setup *utts)
 {
 	struct utt_trace *utt;
+	char buf[16];
+	int i;
 
 	utt = _stp_kzalloc(sizeof(*utt));
 	if (!utt)
@@ -98,6 +100,13 @@ struct utt_trace *utt_trace_setup(struct utt_trace_setup *utts)
 	utt->rchan = relay_open("trace", utt->dir, utts->buf_size, utts->buf_nr, 0, &stp_rchan_callbacks);
 	if (!utt->rchan)
 		goto err1;
+
+	/* now set ownership */
+	for_each_online_cpu(i) {
+		sprintf(buf, "trace%d", i);
+		utt->rchan->buf[i]->dentry->d_inode->i_uid = _stp_uid;
+		utt->rchan->buf[i]->dentry->d_inode->i_gid = _stp_gid;
+	}
 
 	utt->rchan->private_data = utt;
 	utt->trace_state = Utt_trace_setup;
