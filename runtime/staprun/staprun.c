@@ -36,6 +36,7 @@ run_as(uid_t uid, gid_t gid, const char *path, char *const argv[])
 	int rstatus;
 
 	if ((pid = fork()) < 0) {
+		fprintf(stderr, "ERROR: fork failed: %s\n", strerror(errno));
 		return -1;
 	}
 	else if (pid == 0) {
@@ -99,10 +100,8 @@ static void cleanup(int rc)
 	dbug(2, "removing module %s...\n", modname);
 	ret = do_cap(CAP_SYS_MODULE, delete_module, modname, 0);
 	if (ret != 0) {
-		/* Note that delete_module() returns a negative
-		 * version of the error. */
-		fprintf(stderr, "ERROR: delete_module failed %s\n",
-			strerror(-ret));
+		fprintf(stderr, "ERROR: Error removing module '%s': %s\n",
+			modname, moderror(errno));
 	}
 }
 
@@ -118,7 +117,8 @@ int main(int argc, char **argv)
 	rc =  unsetenv("IFS") || unsetenv("CDPATH") || unsetenv("ENV")
 		|| unsetenv("BASH_ENV");
 	if (rc)
-		perror("unsetenv");
+		fprintf(stderr, "ERROR: unsetenv failed: %s\n",
+			strerror(errno));
 	
 	setup_signals();
 

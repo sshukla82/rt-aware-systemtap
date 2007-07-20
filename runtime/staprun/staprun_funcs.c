@@ -57,6 +57,23 @@ static void *grab_file(const char *filename, unsigned long *size)
 	return buffer;
 }
 
+/* Module errors get translated. */
+const char *moderror(int err)
+{
+	switch (err) {
+	case ENOEXEC:
+		return "Invalid module format";
+	case ENOENT:
+		return "Unknown symbol in module";
+	case ESRCH:
+		return "Module has wrong symbol version";
+	case EINVAL:
+		return "Invalid parameters";
+	default:
+		return strerror(err);
+	}
+}
+
 int insert_module(void)
 {
 	int i;
@@ -100,8 +117,8 @@ int insert_module(void)
 	ret = do_cap(CAP_SYS_MODULE, init_module, file, len, opts);
 	if (ret != 0) {
 		free(opts);
-		fprintf(stderr, "insmod: error inserting '%s': %s\n",
-			modpath, strerror(-ret));
+		fprintf(stderr, "ERROR: Error inserting module '%s': %s\n",
+			modpath, moderror(errno));
 		return -1; 
 	}
 	free(opts);

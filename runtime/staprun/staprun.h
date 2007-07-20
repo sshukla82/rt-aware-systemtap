@@ -102,6 +102,7 @@ void del_cap(cap_value_t cap);
 void drop_cap(cap_value_t cap);
 /* staprun_funcs.c */
 void setup_staprun_signals(void);
+const char *moderror(int err);
 int insert_module(void);
 int mountfs(void);
 int check_permissions(void);
