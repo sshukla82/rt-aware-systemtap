@@ -1,5 +1,11 @@
 2007-07-20  David Smith  <dsmith@redhat.com>
 
+	* cap.c (init_cap): Improved error messages.
+	(print_cap): Ditto.
+	(drop_cap): Ditto.
+	(add_cap): Ditto.
+	(del_cap): Ditto.
+
 	* staprun_funcs.c (grab_file): Removed function.
 	(insert_module): Calls mmap() instead of grab_file().
 
