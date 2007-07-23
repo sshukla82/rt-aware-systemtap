@@ -1,3 +1,13 @@
+2007-07-23  David Smith  <dsmith@redhat.com>
+
+	* ctl.c (read_buffer_info): Improved error message.
+	(init_ctl_channel): Ditto.
+	* relay.c (init_relayfs): Ditto.
+	* relay_old.c (open_relayfs_files): Ditto.
+	(process_subbufs): Ditto.
+	(reader_thread): Ditto.
+	(init_oldrelayfs): Ditto.
+
 2007-07-20  David Smith  <dsmith@redhat.com>
 
 	* cap.c (init_cap): Improved error messages.

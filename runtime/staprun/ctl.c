@@ -32,7 +32,8 @@ static void read_buffer_info(void)
 
 	len = read(fd, buf, sizeof(buf));
 	if (len <= 0) {
-		fprintf (stderr, "ERROR: couldn't read bufsize.\n");
+		fprintf (stderr, "ERROR: couldn't read bufsize: %s.\n",
+			 strerror(errno));
 		close(fd);
 		return;
 	}
@@ -59,11 +60,9 @@ int init_ctl_channel(void)
 	dbug(2, "Opening %s\n", buf); 
 	control_channel = open(buf, O_RDWR);
 	if (control_channel < 0) {
-		if (attach_mod) 
-			fprintf (stderr, "ERROR: Cannot connect to module \"%s\".\n", modname);
-		else
-			fprintf (stderr, "ERROR: couldn't open control channel %s\n", buf);
-		fprintf (stderr, "errcode = %s\n", strerror(errno));
+		fprintf (stderr,
+			 "ERROR: couldn't open control channel '%s': %s\n",
+			 buf, strerror(errno));
 		return -1;
 	}
 

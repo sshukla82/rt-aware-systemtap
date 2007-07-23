@@ -94,12 +94,14 @@ static int open_relayfs_files(int cpu, const char *relay_filebase, const char *p
 	dbug(2, "Opening %s.\n", tmp); 
 	proc_fd[cpu] = open(tmp, O_RDWR | O_NONBLOCK);
 	if (proc_fd[cpu] < 0) {
-		fprintf(stderr, "ERROR: couldn't open proc file %s: errcode = %s\n", tmp, strerror(errno));
+		fprintf(stderr, "ERROR: couldn't open proc file %s: %s\n",
+			tmp, strerror(errno));
 		goto err1;
 	}
 
 	if (outfile_name) {
-		/* special case: for testing we sometimes want to write to /dev/null */
+		/* special case: for testing we sometimes want to
+		 * write to /dev/null */
 		if (strcmp(outfile_name, "/dev/null") == 0)
 			strcpy(tmp, outfile_name);
 		else
@@ -108,7 +110,8 @@ static int open_relayfs_files(int cpu, const char *relay_filebase, const char *p
 		sprintf(tmp, "stpd_cpu%d", cpu);	
 
 	if((percpu_tmpfile[cpu] = fopen(tmp, "w+")) == NULL) {
-		fprintf(stderr, "ERROR: Couldn't open output file %s: errcode = %s\n", tmp, strerror(errno));
+		fprintf(stderr, "ERROR: Couldn't open output file %s: %s\n",
+			tmp, strerror(errno));
 		goto err2;
 	}
 
@@ -118,7 +121,9 @@ static int open_relayfs_files(int cpu, const char *relay_filebase, const char *p
 				 0);
 	if(relay_buffer[cpu] == MAP_FAILED)
 	{
-		fprintf(stderr, "ERROR: couldn't mmap relay file, total_bufsize (%d) = subbuf_size (%d) * n_subbufs(%d), error = %s \n", (int)total_bufsize, (int)subbuf_size, (int)n_subbufs, strerror(errno));
+		fprintf(stderr, "ERROR: couldn't mmap relay file, total_bufsize (%d) = subbuf_size (%d) * n_subbufs(%d): %s\n",
+			(int)total_bufsize, (int)subbuf_size, (int)n_subbufs,
+			strerror(errno));
 		goto err3;
 	}
 
@@ -158,7 +163,7 @@ static int process_subbufs(struct _stp_buf_info *info)
 		len = (subbuf_size - sizeof(padding)) - padding;
 		if (len) {
 			if (fwrite_unlocked (subbuf_ptr, len, 1, percpu_tmpfile[cpu]) != 1) {
-				fprintf(stderr, "ERROR: couldn't write to output file for cpu %d, exiting: errcode = %d: %s\n", cpu, errno, strerror(errno));
+				fprintf(stderr, "ERROR: couldn't write to output file for cpu %d, exiting: %s\n", cpu, strerror(errno));
 				exit(1);
 			}
 		}
@@ -211,7 +216,8 @@ static void *reader_thread(void *data)
 			consumed_info.cpu = cpu;
 			consumed_info.consumed = subbufs_consumed;
 			if (write (proc_fd[cpu], &consumed_info, sizeof(struct _stp_consumed_info)) < 0)
-				fprintf(stderr,"WARNING: writing consumed info failed.\n");
+				fprintf(stderr, "WARNING: writing consumed info failed: %s.\n",
+					strerror(errno));
 		}
 		if (status[cpu].info.flushing)
 			pthread_exit(NULL);
@@ -238,7 +244,8 @@ int init_oldrelayfs(void)
 		if (outfile_name) {
 			out_fd[0] = open (outfile_name, O_CREAT|O_TRUNC|O_WRONLY, 0666);
 			if (out_fd[0] < 0) {
-				fprintf(stderr, "ERROR: couldn't open output file %s.\n", outfile_name);
+				fprintf(stderr, "ERROR: couldn't open output file '%s': %s\n",
+					outfile_name, strerror(errno));
 				return -1;
 			}
 		} else
@@ -283,8 +290,10 @@ int init_oldrelayfs(void)
 	for (i = 0; i < ncpus; i++) {
 		/* create a thread for each per-cpu buffer */
 		if (pthread_create(&reader[i], NULL, reader_thread, (void *)(long)i) < 0) {
+			int saved_errno = errno;
 			close_relayfs_files(i);
-			fprintf(stderr, "ERROR: Couldn't create reader thread, cpu = %d\n", i);
+			fprintf(stderr, "ERROR: Couldn't create reader thread, cpu = %d: %s\n",
+				i, strerror(saved_errno));
 			goto err;
 		}
 	}

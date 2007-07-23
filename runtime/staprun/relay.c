@@ -173,7 +173,8 @@ int init_relayfs(void)
 			
 			out_fd[i] = open (buf, O_CREAT|O_TRUNC|O_WRONLY, 0666);
 			if (out_fd[i] < 0) {
-				fprintf(stderr, "ERROR: couldn't open output file %s.\n", buf);
+				fprintf(stderr, "ERROR: couldn't open output file %s: %s\n",
+					buf, strerror(errno));
 				return -1;
 			}
 		}
@@ -182,7 +183,8 @@ int init_relayfs(void)
 		if (outfile_name) {
 			out_fd[0] = open (outfile_name, O_CREAT|O_TRUNC|O_WRONLY, 0666);
 			if (out_fd[0] < 0) {
-				fprintf(stderr, "ERROR: couldn't open output file %s.\n", outfile_name);
+				fprintf(stderr, "ERROR: couldn't open output file %s: %s\n",
+					outfile_name, strerror(errno));
 				return -1;
 			}
 		} else
@@ -191,9 +193,10 @@ int init_relayfs(void)
 	}
 	dbug(2, "starting threads\n");
 	for (i = 0; i < ncpus; i++) {
-		if (pthread_create(&reader[i], NULL, reader_thread, (void *)(long)i) < 0) {
-			fprintf(stderr, "failed to create thread\n");
-			perror("Error creating thread");
+		if (pthread_create(&reader[i], NULL, reader_thread,
+				   (void *)(long)i) < 0) {
+			fprintf(stderr, "ERROR: failed to create thread: %s\n",
+				strerror(errno));
 			return -1;
 		}
 	}		
