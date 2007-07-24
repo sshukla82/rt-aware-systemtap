@@ -1,3 +1,10 @@
+2007-07-24  David Smith  <dsmith@redhat.com>
+
+	* relayfs.c (utt_trace_setup): Improved error handling.
+	(utt_trace_remove): Improved error checking.
+	* utt.c (utt_remove_tree): Ditto.
+	(utt_trace_cleanup): Ditto.
+
 2007-07-20  David Smith  <dsmith@redhat.com>
 
 	* control.c (_stp_register_ctl_channel): Bug fix - sets

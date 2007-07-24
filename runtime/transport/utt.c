@@ -45,6 +45,8 @@ static void utt_remove_root(struct utt_trace *utt)
 
 static void utt_remove_tree(struct utt_trace *utt)
 {
+	if (utt == NULL || utt->dir == NULL)
+		return;
 	debugfs_remove(utt->dir);
 	utt_remove_root(utt);
 }
@@ -72,8 +74,12 @@ err:
 
 void utt_trace_cleanup(struct utt_trace *utt)
 {
-	relay_close(utt->rchan);
-	debugfs_remove(utt->dropped_file);
+	if (utt == NULL)
+		return;
+	if (utt->rchan)
+		relay_close(utt->rchan);
+	if (utt->dropped_file)
+		debugfs_remove(utt->dropped_file);
 	utt_remove_tree(utt);
 	kfree(utt);
 }
