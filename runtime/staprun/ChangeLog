@@ -1,3 +1,7 @@
+2007-07-24  David Smith  <dsmith@redhat.com>
+
+	* staprun_funcs.c (check_path): Improved error message.
+
 2007-07-23  David Smith  <dsmith@redhat.com>
 
 	* ctl.c (read_buffer_info): Improved error message.

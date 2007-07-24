@@ -263,9 +263,16 @@ check_path(void)
 	/* Use realpath() to canonicalize the module directory
 	 * path. */
 	if (realpath(staplib_dir_path, staplib_dir_realpath) == NULL) {
-		fprintf(stderr,
-			"ERROR: Unable to canonicalize path \"%s\": %s\n",
-			staplib_dir_path, strerror(errno));
+		if (errno == ENOENT)
+			fprintf(stderr, 
+				"ERROR: Members of the \"stapusr\" group can only use modules within\n"
+				"  the \"%s\" directory.\n"
+				"  That directory does not exist.\n",
+				staplib_dir_path);
+		else
+			fprintf(stderr,
+				"ERROR: Unable to canonicalize path \"%s\": %s\n",
+				staplib_dir_path, strerror(errno));
 		return -1;
 	}
 
