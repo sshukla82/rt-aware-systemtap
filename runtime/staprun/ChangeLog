@@ -1,11 +1,15 @@
 2007-07-25  Martin Hunt  <hunt@redhat.com>
 
+	* staprun.c (cleanup): Only do cleanups once.
+	
+2007-07-25  Martin Hunt  <hunt@redhat.com>	
+
 	* staprun.c (init_staprun): If insmod, then set inserted_module.
 	(cleanup): Only try to remove module when appropriate.
 	(exit_cleanup): New. Calls cleanup().
 	(main): Set atexit(exit_cleanup) so cleanup always gets called
 	and modules get removed.
-	
+
 	* symbols.c: Call cleanup_and_exit(1) instead of 0.
 	
 	* stapio.c: Remove some duplicate declarations.

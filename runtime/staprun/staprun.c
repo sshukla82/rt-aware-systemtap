@@ -92,6 +92,13 @@ int init_staprun(void)
 	
 static void cleanup(int rc)
 {
+	/* Only cleanup once. */
+	static int done = 0;
+	if (done == 0)
+		done = 1;
+	else
+		return;
+
 	dbug(2, "rc=%d, inserted_module=%d\n", rc, inserted_module);
 
 	/* rc == 2 means disconnected */
