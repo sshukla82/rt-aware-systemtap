@@ -21,6 +21,7 @@ static ssize_t _stp_ctl_write_cmd (struct file *file, const char __user *buf,
 				    size_t count, loff_t *ppos)
 {
 	int type;
+	static int started = 0;
 
 	if (count < sizeof(int))
 		return 0;
@@ -28,7 +29,7 @@ static ssize_t _stp_ctl_write_cmd (struct file *file, const char __user *buf,
 	if (get_user(type, (int __user *)buf))
 		return -EFAULT;
 
-	//kbug ("count:%d type:%d\n", count, type);
+	// kbug ("count:%d type:%d\n", count, type);
 
 	if (type == STP_SYMBOLS) {
 		count -= sizeof(long);
@@ -41,20 +42,25 @@ static ssize_t _stp_ctl_write_cmd (struct file *file, const char __user *buf,
 	switch (type) {
 	case STP_START:
 	{
-		struct _stp_msg_start st;
-		if (count < sizeof(st))
-			return 0;
-		if (copy_from_user (&st, buf, sizeof(st)))
-			return -EFAULT;
-		_stp_handle_start (&st);
+		if (started == 0) {
+			struct _stp_msg_start st;
+			if (count < sizeof(st))
+				return 0;
+			if (copy_from_user (&st, buf, sizeof(st)))
+				return -EFAULT;
+			_stp_handle_start (&st);
+			started = 1;
+		}
 		break;
 	}
 
 	case STP_SYMBOLS:
-		count = _stp_do_symbols(buf, count);
+		if (started == 0)
+			count = _stp_do_symbols(buf, count);
 		break;
 	case STP_MODULE:
-		count = _stp_do_module(buf, count);
+		if (started == 0)
+			count = _stp_do_module(buf, count);
 		break;
 	case STP_EXIT:
 		_stp_exit_flag = 1;
