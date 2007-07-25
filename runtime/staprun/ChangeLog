@@ -1,5 +1,9 @@
 2007-07-25  David Smith  <dsmith@redhat.com>
 
+	* common.c (parse_args): Improved argument handling by disallowing
+	mutually exclusive options.
+	(usage): Improved usage message.
+
 	* common.c (path_parse_modname): Accepts a file path to a module
 	or a module name.
 	* staprun.h: Changed modpath from a pointer to an array.

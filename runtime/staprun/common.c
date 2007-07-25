@@ -83,12 +83,40 @@ void parse_args(int argc, char **argv)
 			usage(argv[0]);
 		}
 	}
+
+	if (attach_mod && load_only) {
+		fprintf(stderr,
+			"You can't specify the '-A' and '-L' options together.\n");
+		usage(argv[0]);
+	}
+
+	if (attach_mod && buffer_size) {
+		fprintf(stderr,
+			"You can't specify the '-A' and '-b' options together.  The '-b'\n"
+			"buffer size option only has an effect when the module is inserted.\n");
+		usage(argv[0]);
+	}
+
+	if (attach_mod && target_cmd) {
+		fprintf(stderr,
+			"You can't specify the '-A' and '-c' options together.  The '-c cmd'\n"
+			"option used to start a command only has an effect when the module\n"
+			"is inserted.\n");
+		usage(argv[0]);
+	}
+
+	if (attach_mod && target_pid) {
+		fprintf(stderr,
+			"You can't specify the '-A' and '-x' options together.  The '-x pid'\n"
+			"option only has an effect when the module is inserted.\n");
+		usage(argv[0]);
+	}
 }
 
 void usage(char *prog)
 {
 	fprintf(stderr, "\n%s [-v]  [-c cmd ] [-x pid] [-u user]\n"
-                "\t[-A modname]] [-L] [-b bufsize] [-o FILE] kmod-name [kmod-options]\n", prog);
+                "\t[-A|-L] [-b bufsize] [-o FILE] MODULE [module-options]\n", prog);
 	fprintf(stderr, "-v              Increase verbosity.\n");
 	fprintf(stderr, "-c cmd          Command \'cmd\' will be run and staprun will\n");
 	fprintf(stderr, "                exit when it does.  The '_stp_target' variable\n");
@@ -101,7 +129,10 @@ void usage(char *prog)
 	fprintf(stderr, "                which be assumed to be the buffer size in MB.\n");
 	fprintf(stderr, "                That value will be per-cpu in bulk mode.\n");
 	fprintf(stderr, "-L              Load module and start probes, then detach.\n");
-	fprintf(stderr, "-A modname      Attach to systemtap module modname.\n");
+	fprintf(stderr, "-A              Attach to loaded systemtap module.\n");
+	fprintf(stderr, "MODULE can be either a module name or a module path.  If a\n");
+	fprintf(stderr, "module name is used, it is looked for in the following\n");
+	fprintf(stderr, "directory: /lib/modules/`uname -r`/systemtap\n");
 	exit(1);
 }
 
