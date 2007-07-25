@@ -1,3 +1,11 @@
+2007-07-25  David Smith  <dsmith@redhat.com>
+
+	* common.c (path_parse_modname): Accepts a file path to a module
+	or a module name.
+	* staprun.h: Changed modpath from a pointer to an array.
+	* stapio.c (main): Updated with modpath changes.
+	* staprun.c (main): Ditto.
+
 2007-07-25  Martin Hunt  <hunt@redhat.com>
 
 	* staprun.c (cleanup): Only do cleanups once.

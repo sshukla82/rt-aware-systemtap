@@ -35,7 +35,13 @@ int main(int argc, char **argv)
 	}
 
 	if (optind < argc) {
-		modpath = argv[optind++];
+		if (strlen(argv[optind]) > sizeof(modpath)) {
+			fprintf(stderr,
+				"Module path '%s' is larger than buffer.\n",
+				argv[optind]);
+			exit(-1);
+		}
+		strcpy(modpath, argv[optind++]);
 		path_parse_modname(modpath);
 		dbug(2, "modpath=\"%s\", modname=\"%s\"\n", modpath, modname);
 	}

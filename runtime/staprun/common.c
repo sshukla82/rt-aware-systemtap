@@ -13,7 +13,7 @@
 #include "staprun.h"
 #include <sys/types.h>
 #include <unistd.h>
-
+#include <sys/utsname.h>
 
 /* variables needed by parse_args() */
 int verbose;
@@ -26,7 +26,7 @@ int load_only;
 
 /* module variables */
 char *modname = NULL;
-char *modpath = NULL;
+char modpath[PATH_MAX];
 char *modoptions[MAXMODOPTIONS];
 int initialized = 0;
 
@@ -105,11 +105,64 @@ void usage(char *prog)
 	exit(1);
 }
 
+/*
+ * path_parse_modname.  Here's how this code interprets 'path':
+ *
+ * (1) If path contains a '/', it is assumed to be an absolute or
+ * relative file path to a module (such as "../foo.ko" or
+ * "/tmp/stapXYZ/stap_foo.ko").
+ *
+ * (2) If path doesn't contain a '/' and ends in '.ko', it is a file
+ * path to a module in the current directory (such as "foo.ko").
+ *
+ * (3) If path doesn't contain a '/' and doesn't end in '.ko', then
+ * it is a module name and the full pathname of the module is
+ * '/lib/modules/`uname -r`/systemtap/PATH.ko'.  For instance, if
+ * path was "foo", the full module pathname would be
+ * '/lib/modules/`uname -r`/systemtap/foo.ko'.
+ */
 void path_parse_modname (char *path)
 {
-	char *mptr = rindex (path, '/');
-	if (mptr == NULL) 
-		mptr = path;
+	char *mptr = rindex(path, '/');
+
+	/* If we couldn't find a '/', ... */
+	if (mptr == NULL) {
+		size_t plen = strlen(path);
+
+		/* If the path ends with the '.ko' file extension,
+		 * then we've got a module in the current
+		 * directory. */
+		if (plen > 3 && strcmp(&path[plen - 3], ".ko") == 0)
+			mptr = path;
+		/* If we didn't find the '.ko' file extension, then
+		 * we've just got a module name, not a module path.
+		 * Look for the module in /lib/modules/`uname
+		 * -r`/systemtap. */
+		else {
+			struct utsname utsbuf;
+			char tmp_path[PATH_MAX];
+
+			/* First, we need to figure out what the
+			 * kernel version. */
+			if (uname(&utsbuf) != 0) {
+				fprintf(stderr,
+					"ERROR: Unable to determine kernel version, uname failed: %s\n",
+					strerror(errno));
+				exit(-1);
+			}
+
+			/* Build the module path, which will look like
+			 * '/lib/modules/KVER/systemtap/{path}.ko'. */
+			sprintf(tmp_path, "/lib/modules/%s/systemtap/%s.ko",
+				utsbuf.release, path);
+			strcpy(path, tmp_path);
+
+			mptr = rindex(path, '/');
+			mptr++;
+		}
+	}
+	/* We found a '/', so the module name starts with the next
+	 * character. */
 	else
 		mptr++;
 

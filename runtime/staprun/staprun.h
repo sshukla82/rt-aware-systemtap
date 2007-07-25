@@ -124,7 +124,7 @@ extern int initialized;
 extern int verbose;
 extern unsigned int buffer_size;
 extern char *modname;
-extern char *modpath;
+extern char modpath[PATH_MAX];
 #define MAXMODOPTIONS 64
 extern char *modoptions[MAXMODOPTIONS];
 extern int target_pid;
