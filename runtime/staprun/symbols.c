@@ -42,7 +42,7 @@ static int get_sections(char *name, char *data_start, int datalen)
 	if (res >= (int)sizeof(dir)) {
 		fprintf(stderr, "ERROR: couldn't fit module \"%s\" into dir buffer.\n", name);
 		fprintf(stderr, "This should never happen. Please file a bug report.\n");
-		cleanup_and_exit(0);
+		cleanup_and_exit(1);
 	}
 
 	if ((secdir = opendir(dir)) == NULL)
@@ -58,7 +58,7 @@ static int get_sections(char *name, char *data_start, int datalen)
 			fprintf(stderr, "ERROR: couldn't fit secname \"%s\" into filename buffer.\n", secname);
 			fprintf(stderr, "This should never happen. Please file a bug report.\n");
 			closedir(secdir);
-			cleanup_and_exit(0);
+			cleanup_and_exit(1);
 		}
 		if ((fd = open(filename,O_RDONLY)) >= 0) {
 			if (read(fd, buf, 32) > 0) {
@@ -122,7 +122,7 @@ err1:
 err0:
 	/* if this happens, something went seriously wrong. */
 	err("Unexpected error. Overflowed buffers.\n");
-	cleanup_and_exit(0);
+	cleanup_and_exit(1);
 	return 0; /* not reached */
 }
 #undef SECDIR
@@ -134,7 +134,7 @@ void send_module (char *mname)
 	if (len) {
 		if (send_request(STP_MODULE, data, len) < 0) {
 			err("Loading of module %s failed. Exiting...\n", mname);
-			cleanup_and_exit(0);
+			cleanup_and_exit(1);
 		}
 	}
 }
@@ -276,5 +276,5 @@ err:
 		fclose(kallsyms);
 
 	err("Loading of symbols failed. Exiting...\n");
-	cleanup_and_exit(0);
+	cleanup_and_exit(1);
 }

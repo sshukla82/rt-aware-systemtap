@@ -22,10 +22,7 @@
 
 #include "staprun.h"
 
-char modname[128];
-char *modpath = NULL;
-#define MAXMODOPTIONS 64
-char *modoptions[MAXMODOPTIONS];
+int inserted_module = 0;
 
 extern long delete_module(const char *, unsigned int);
 
@@ -54,7 +51,7 @@ run_as(uid_t uid, gid_t gid, const char *path, char *const argv[])
 		/* Actually run the command. */
 		if (execv(path, argv) < 0)
 			perror(path);
-		_exit(-1);
+		_exit(1);
 	}
 
 	if (waitpid(pid, &rstatus, 0) < 0)
@@ -83,34 +80,52 @@ int init_staprun(void)
 	if (mountfs() < 0)
 		return -1;
 
-	if (insert_module() < 0)
-		return -1;
-
+	if (!attach_mod) {
+		if (insert_module() < 0)
+			return -1;
+		else
+			inserted_module = 1;
+	}
+	
 	return 0;
 }
 	
 static void cleanup(int rc)
 {
-	long ret;
+	dbug(2, "rc=%d, inserted_module=%d\n", rc, inserted_module);
 
 	/* rc == 2 means disconnected */
 	if (rc == 2)
 		return;
 
-	dbug(2, "removing module %s...\n", modname);
-	ret = do_cap(CAP_SYS_MODULE, delete_module, modname, 0);
-	if (ret != 0) {
-		fprintf(stderr, "ERROR: Error removing module '%s': %s\n",
-			modname, moderror(errno));
+	/* If we inserted the module and did not get rc==2, then */
+	/* we really want to remove it. */
+	if (inserted_module || rc == 3) {
+		long ret;
+		dbug(2, "removing module %s\n", modname);
+		ret = do_cap(CAP_SYS_MODULE, delete_module, modname, 0);
+		if (ret != 0) {
+			fprintf(stderr, "ERROR: Error removing module '%s': %s\n",
+				modname, moderror(errno));
+		}
 	}
+}
+
+static void exit_cleanup(void)
+{
+	dbug(2, "something exited...\n");
+	cleanup(1);
 }
 
 int main(int argc, char **argv)
 {
 	int rc;
 
+	if (atexit(exit_cleanup))
+		ferror("cannot set exit function\n");
+
 	if (!init_cap())
-		exit(-1);
+		return 1;
 
 	/* Get rid of a few standard environment variables (which */
 	/* might cause us to do unintended things). */

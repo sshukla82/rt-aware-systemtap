@@ -24,6 +24,12 @@ char *outfile_name;
 int attach_mod;
 int load_only;
 
+/* module variables */
+char *modname = NULL;
+char *modpath = NULL;
+char *modoptions[MAXMODOPTIONS];
+int initialized = 0;
+
 void parse_args(int argc, char **argv)
 {
 	int c;
@@ -107,8 +113,9 @@ void path_parse_modname (char *path)
 	else
 		mptr++;
 
-	if (strlen(mptr) >= sizeof(modname))
-		fatal("Module name larger than modname buffer.\n");
+	modname = malloc(strlen(mptr) + 1);
+	if (!modname)
+		fatal("Memory allocation failed. Exiting.\n");
 
 	strcpy(modname, mptr);
 	
@@ -125,7 +132,10 @@ static void fatal_handler (int signum)
         rc = write (STDERR_FILENO, ERR_MSG, sizeof(ERR_MSG));
         rc = write (STDERR_FILENO, str, strlen(str));
         rc = write (STDERR_FILENO, "\n", 1);
-        _exit(-1);
+	if (initialized)
+		_exit(3);
+	else
+		_exit(1);
 }
 
 void setup_signals(void)

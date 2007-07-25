@@ -38,7 +38,7 @@
  * that are currently enabled. A good practice would be to only enable 
  * capabilities when necessary and to delete or drop them as soon as possible.
  *
- * Capabilities we use include:
+ * Capabilities we might use include:
  *
  * CAP_SYS_MODULE - insert and remove kernel modules
  * CAP_SYS_ADMIN - misc, including mounting and unmounting
@@ -51,51 +51,33 @@
 int init_cap(void)
 {
 	cap_t caps = cap_init();
-	cap_value_t capv[] = {CAP_SYS_MODULE, CAP_SYS_ADMIN, CAP_SYS_NICE, CAP_SETUID, CAP_SETGID, CAP_CHOWN};
+	cap_value_t capv[] = {CAP_SYS_MODULE, CAP_SYS_ADMIN, CAP_SYS_NICE, CAP_SETUID, CAP_SETGID};
 	const int numcaps = sizeof(capv) / sizeof(capv[0]);
 	uid_t uid = getuid();
 	gid_t gid = getgid();
 
 	cap_clear(caps);
-	if (caps == NULL) {
-		fprintf(stderr, "ERROR: cap_init() failed: %s\n",
-			strerror(errno));
-		goto err;
-	}
-	if (cap_set_flag(caps, CAP_PERMITTED, numcaps, capv, CAP_SET) < 0) {
-		fprintf(stderr,
-			"ERROR: Could not set permitted capabilities: %s\n",
-			strerror(errno));
-		goto err;
-	}
-	if (cap_set_proc(caps) < 0) {
-		fprintf(stderr, "ERROR: Could not apply capability set: %s\n",
-			strerror(errno));
-		goto err;
-	}
+	if (caps == NULL)
+		ferror("cap_init");
+
+	if (cap_set_flag(caps, CAP_PERMITTED, numcaps, capv, CAP_SET) < 0)
+		ferror("cap_set_flag");
+
+	if (cap_set_proc(caps) < 0)
+		ferror("cap_set_proc");
+
 	cap_free(caps);
 
-	if (prctl(PR_SET_KEEPCAPS, 1, 0, 0, 0) < 0) {
-		fprintf(stderr,
-			"ERROR: Couldn't set PR_SET_KEEPCAPS flag: %s\n",
-			strerror(errno));
-		goto err;
-	}
+	if (prctl(PR_SET_KEEPCAPS, 1, 0, 0, 0) < 0)
+		ferror("prctl");
 
-	if (setresuid(uid, uid, uid) < 0) {
-		fprintf(stderr, "ERROR: Couldn't set uid: %s\n",
-			strerror(errno));
-		goto err;
-	}
-	if (setresgid(gid, gid, gid) < 0) {
-		fprintf(stderr, "ERROR: Couldn't set gid: %s\n",
-			strerror(errno));
-		goto err;
-	}
+	if (setresuid(uid, uid, uid) < 0)
+		ferror("setresuid");
+
+	if (setresgid(gid, gid, gid) < 0)
+		ferror("setresgid");
 
 	return 1;
-err:
-	return 0;
 }
 
 void print_cap(char *text)
@@ -106,9 +88,8 @@ void print_cap(char *text)
 	gid_t gid, egid, sgid;
 
 	if (caps == NULL) {
-		fprintf(stderr, "ERROR: cap_get_proc failed: %s\n",
-			strerror(errno));
-		exit(-1);
+		perror("ERROR: cap_get_proc failed");
+		return;
 	}
 	
 	getresuid(&uid, &euid, &suid);
@@ -117,9 +98,7 @@ void print_cap(char *text)
 	printf("***** %s\n", text);
 
 	if ((p=prctl(PR_GET_KEEPCAPS, 0, 0, 0, 0)) < 0)
-		fprintf(stderr,
-			"ERROR: Couldn't get PR_SET_KEEPCAPS flag value: %s\n",
-			strerror(errno));
+		perror("ERROR: Couldn't get PR_SET_KEEPCAPS flag value");
 	else 
 		printf("KEEPCAPS: %d\n", p);
 
@@ -137,22 +116,12 @@ void print_cap(char *text)
 void drop_cap(cap_value_t cap)
 {
 	cap_t caps = cap_get_proc();
-	if (caps == NULL) {
-		fprintf(stderr, "ERROR: cap_get_proc failed: %s\n",
-			strerror(errno));
-		exit(-1);
-	}
-	if (cap_set_flag(caps, CAP_PERMITTED, 1, &cap, CAP_CLEAR) < 0) {
-		fprintf(stderr,
-			"ERROR: Could not clear effective capabilities: %s\n",
-			strerror(errno));
-		exit(-1);
-	}
-	if (cap_set_proc(caps) < 0) {
-		fprintf(stderr, "ERROR: Could not apply capability set: %s\n",
-			strerror(errno));
-		exit(-1);
-	}
+	if (caps == NULL)
+		ferror("ERROR: cap_get_proc failed");
+	if (cap_set_flag(caps, CAP_PERMITTED, 1, &cap, CAP_CLEAR) < 0)
+		ferror("ERROR: Could not clear effective capabilities");
+	if (cap_set_proc(caps) < 0)
+		ferror("ERROR: Could not apply capability set");
 	cap_free(caps);
 }
 
@@ -160,23 +129,12 @@ void drop_cap(cap_value_t cap)
 void add_cap(cap_value_t cap)
 {
 	cap_t caps = cap_get_proc();
-	if (caps == NULL) {
-		fprintf(stderr, "ERROR: cap_get_proc failed: %s\n",
-			strerror(errno));
-		exit(-1);
-	}
-	if (cap_set_flag(caps, CAP_EFFECTIVE, 1, &cap, CAP_SET) < 0) {
-		fprintf(stderr,
-			"ERROR: Could not set effective capabilities: %s\n",
-			strerror(errno));
-		exit(-1);
-	}
-	if (cap_set_proc(caps) < 0) {
-		fprintf(stderr,
-			"ERROR: Could not apply capability set: %s\n",
-			strerror(errno));
-		exit(-1);
-	}
+	if (caps == NULL)
+		ferror("ERROR: cap_get_proc failed");
+	if (cap_set_flag(caps, CAP_EFFECTIVE, 1, &cap, CAP_SET) < 0)
+		ferror("ERROR: Could not set effective capabilities");
+	if (cap_set_proc(caps) < 0)
+		ferror("ERROR: Could not apply capability set");
 	cap_free(caps);
 }
 
@@ -184,22 +142,11 @@ void add_cap(cap_value_t cap)
 void del_cap(cap_value_t cap)
 {
 	cap_t caps = cap_get_proc();
-	if (caps == NULL) {
-		fprintf(stderr, "ERROR: cap_get_proc failed: %s\n",
-			strerror(errno));
-		exit(-1);
-	}
-	if (cap_set_flag(caps, CAP_EFFECTIVE, 1, &cap, CAP_CLEAR) < 0) {
-		fprintf(stderr,
-			"ERROR: Could not clear effective capabilities: %s\n",
-			strerror(errno));
-		exit(-1);
-	}
-	if (cap_set_proc(caps) < 0) {
-		fprintf(stderr,
-			"ERROR: Could not apply capability set: %s\n",
-			strerror(errno));
-		exit(-1);
-	}
+	if (caps == NULL)
+		ferror("ERROR: cap_get_proc failed");
+	if (cap_set_flag(caps, CAP_EFFECTIVE, 1, &cap, CAP_CLEAR) < 0)
+		ferror("ERROR: Could not clear effective capabilities");
+	if (cap_set_proc(caps) < 0)
+		ferror("ERROR: Could not apply capability set");
 	cap_free(caps);
 }

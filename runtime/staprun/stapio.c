@@ -23,26 +23,6 @@
 #include "staprun.h"
 #include <pwd.h>
 
-extern char *optarg;
-extern int optopt;
-extern int optind;
-
-/* variables needed by parse_args() */
-int verbose;
-int target_pid;
-unsigned int buffer_size;
-char *target_cmd;
-char *outfile_name;
-int attach_mod;
-int load_only;
-
-char modname[128];
-char *modpath = NULL;
-#define MAXMODOPTIONS 64
-char *modoptions[MAXMODOPTIONS];
-uid_t cmd_uid;
-gid_t cmd_gid;
-
 int main(int argc, char **argv)
 {
 	setup_signals();
@@ -77,8 +57,10 @@ int main(int argc, char **argv)
 		usage(argv[0]);
 	}
 
-	if (init_staprun())
+	if (init_stapio())
 		exit(1);
+	
+	initialized = 1;
 
 	if (stp_main_loop()) {
 		fprintf(stderr,"Couldn't enter main loop. Exiting.\n");

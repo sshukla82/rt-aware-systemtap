@@ -91,7 +91,7 @@ void start_cmd(void)
 	dbug (1, "execing target_cmd %s\n", target_cmd);
 	if ((pid = fork()) < 0) {
 		perror ("fork");
-		exit(-1);
+		exit(1);
 	} else if (pid == 0) {
 		int signum;
 
@@ -100,7 +100,7 @@ void start_cmd(void)
 
 		if (execl("/bin/sh", "sh", "-c", target_cmd, NULL) < 0)
 			perror(target_cmd);
-		_exit(-1);
+		_exit(1);
 	}
 	target_pid = pid;
 }
@@ -120,7 +120,7 @@ void system_cmd(char *cmd)
 	} else if (pid == 0) {
 		if (execl("/bin/sh", "sh", "-c", cmd, NULL) < 0)
 			perror(cmd);
-		_exit(-1);
+		_exit(1);
 	}
 }
 
@@ -161,14 +161,14 @@ static int using_old_transport(void)
 }
 
 /**
- *	init_stp - initialize the app
+ *	init_stapio - initialize the app
  *	@print_summary: boolean, print summary or not at end of run
  *
  *	Returns 0 on success, negative otherwise.
  */
-int init_staprun(void)
+int init_stapio(void)
 {
-	dbug(2, "init_staprun\n");
+	dbug(2, "init_stapio\n");
 
 	use_old_transport = using_old_transport();
 	if (use_old_transport < 0)
@@ -177,7 +177,7 @@ int init_staprun(void)
 	if (attach_mod) {
 		dbug(2, "Attaching\n");
 		if (init_ctl_channel() < 0) {
-			err("Failed to initialize control channel.\n");
+			dbug(2, "Failed to initialize control channel.\n");
 			return -1;
 		}
 		if (use_old_transport) {
@@ -208,6 +208,12 @@ int init_staprun(void)
 	return 0;
 }
 
+/* cleanup_and_exit() closed channels and frees memory
+ * then exits with the following status codes:
+ * 1 - failed to initialize.
+ * 2 - disconnected
+ * 3 - initialized
+ */
 void cleanup_and_exit (int closed)
 {
 	pid_t err;
@@ -237,9 +243,11 @@ void cleanup_and_exit (int closed)
 
 	if (closed == 2) {
 		fprintf(stderr, "\nDisconnecting from systemtap module.\n");
-		fprintf(stderr, "To reconnect, type \"staprun -A %s\"\n", modname); 
-	}
-
+		fprintf(stderr, "To reconnect, type \"staprun -A %s\"\n", modname);
+	} else if (initialized)
+		closed = 3;
+	else
+		closed = 1;
 	exit(closed);
 }
 
@@ -286,7 +294,7 @@ int stp_main_loop(void)
 				perror("write");
 				fprintf(stderr,
 					"ERROR: write error. nb=%ld\n", (long)nb);
-				cleanup_and_exit(0);
+				cleanup_and_exit(1);
 			}
                         break;
 		}
@@ -309,7 +317,7 @@ int stp_main_loop(void)
 			if (t->res < 0) {
 				if (target_cmd)
 					kill (target_pid, SIGKILL);
-				cleanup_and_exit(0);
+				cleanup_and_exit(1);
 			} else if (target_cmd)
 				kill (target_pid, SIGUSR1);
 			break;
@@ -326,10 +334,10 @@ int stp_main_loop(void)
 			struct _stp_msg_start ts;
 			if (use_old_transport) {
 				if (init_oldrelayfs() < 0)
-					cleanup_and_exit(0);
+					cleanup_and_exit(1);
 			} else {
 				if (init_relayfs() < 0)
-					cleanup_and_exit(0);
+					cleanup_and_exit(1);
 			}
 			ts.target = target_pid;
 			send_request(STP_START, &ts, sizeof(ts));
@@ -349,12 +357,12 @@ int stp_main_loop(void)
 			dbug(2, "STP_SYMBOLS request received\n");
 			if (req->endian != 0x1234) {
 				fprintf(stderr,"ERROR: staprun is compiled with different endianess than the kernel!\n");
-				cleanup_and_exit(0);
+				cleanup_and_exit(1);
 			}
 			if (req->ptr_size != sizeof(char *)) {
 				fprintf(stderr,"ERROR: staprun is compiled with %d-bit pointers and the kernel uses %d-bit.\n",
 					8*(int)sizeof(char *), 8*req->ptr_size);
-				cleanup_and_exit(0);
+				cleanup_and_exit(1);
 			}
 			do_kernel_symbols();
 			break;

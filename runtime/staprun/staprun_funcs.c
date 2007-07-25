@@ -56,9 +56,6 @@ int insert_module(void)
 	int fd, saved_errno;
 	struct stat sbuf;
 		
-	if (attach_mod)
-		return 0;
-
 	dbug(2, "inserting module\n");
 
 	opts = malloc(128);
@@ -252,8 +249,7 @@ check_path(void)
 	/* First, we need to figure out what the kernel
 	 * version is and build the '/lib/modules/KVER/systemtap' path. */
 	if (uname(&utsbuf) != 0) {
-		fprintf(stderr,
-			"ERROR: Unable to determine kernel version, uname failed: %s\n",
+		err("ERROR: Unable to determine kernel version, uname failed: %s\n",
 			strerror(errno));
 		return -1;
 	}
@@ -278,8 +274,7 @@ check_path(void)
 
 	/* Use realpath() to canonicalize the module path. */
 	if (realpath(modpath, module_realpath) == NULL) {
-		fprintf(stderr,
-			"ERROR: Unable to canonicalize path \"%s\": %s\n",
+		fprintf(stderr,"ERROR: Unable to canonicalize path \"%s\": %s\n",
 			modpath, strerror(errno));
 		return -1;
 	}

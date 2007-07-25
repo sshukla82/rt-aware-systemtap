@@ -1,3 +1,29 @@
+2007-07-25  Martin Hunt  <hunt@redhat.com>
+
+	* staprun.c (init_staprun): If insmod, then set inserted_module.
+	(cleanup): Only try to remove module when appropriate.
+	(exit_cleanup): New. Calls cleanup().
+	(main): Set atexit(exit_cleanup) so cleanup always gets called
+	and modules get removed.
+	
+	* symbols.c: Call cleanup_and_exit(1) instead of 0.
+	
+	* stapio.c: Remove some duplicate declarations.
+	(main): Call init_stapio instead of init_staprun.
+
+	* mainloop.c (start_cmd): exit 1 instead of -1.
+	(system_cmd): Ditto.
+	(init_staprun): Renamed init_stapio.
+	(cleanup_and_exit): Set exit status.
+	(_stp_main_loop): Call cleanup_and_exit() with proper status.
+	
+	* common.c: Remove some duplicate declarations.
+	(path_parse_modname): Malloc modname buffer.
+	(fatal_handler): Set exit code based on if initialization completed.
+	
+	* cap.c (print_cap): Don't exit on failures here.
+	ALL: Use ferror and perror to simplify error printing and handling.
+
 2007-07-24  David Smith  <dsmith@redhat.com>
 
 	* staprun_funcs.c (check_path): Improved error message.

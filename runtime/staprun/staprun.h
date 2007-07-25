@@ -47,14 +47,14 @@
 #define fatal(args...) {						\
 		fprintf(stderr,"%s:%d: ",__FUNCTION__, __LINE__);	\
 		fprintf(stderr,args);					\
-		exit(-1);						\
+		exit(1);						\
 	}								\
 		
 /* like perror, but exits */
 #define ferror(msg) {						  \
 		fprintf(stderr,"%s:%d: ",__FUNCTION__, __LINE__); \
 		perror(msg);					  \
-		exit(-1);					  \
+		exit(1);					  \
 	}							  \
 		
 #define do_cap(cap,func,args...) ({			\
@@ -82,6 +82,7 @@ extern int use_old_transport;
  * function prototypes
  */
 int init_staprun(void);
+int init_stapio(void);
 int stp_main_loop(void);
 int send_request(int type, void *data, int len);
 void cleanup_and_exit (int);
@@ -117,13 +118,15 @@ void setup_signals(void);
  */
 extern int control_channel;
 extern int ncpus;
+extern int initialized;
 
 /* flags */
 extern int verbose;
 extern unsigned int buffer_size;
-extern char modname[128];
+extern char *modname;
 extern char *modpath;
-extern char *modoptions[];
+#define MAXMODOPTIONS 64
+extern char *modoptions[MAXMODOPTIONS];
 extern int target_pid;
 extern char *target_cmd;
 extern char *outfile_name;
