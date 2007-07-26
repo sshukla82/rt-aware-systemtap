@@ -242,6 +242,7 @@ static int
 check_path(void)
 {
 	struct utsname utsbuf;
+	struct stat sb;
 	char staplib_dir_path[PATH_MAX];
 	char staplib_dir_realpath[PATH_MAX];
 	char module_realpath[PATH_MAX];
@@ -256,19 +257,51 @@ check_path(void)
 	sprintf(staplib_dir_path, "/lib/modules/%s/systemtap",
 		utsbuf.release);
 
+	/* Validate /lib/modules/KVER/systemtap. */
+	if (stat(staplib_dir_path, &sb) < 0) {
+		fprintf(stderr,
+			"ERROR: Members of the \"stapusr\" group can only use modules within\n"
+			"  the \"%s\" directory.\n"
+			"  Error getting information on that directory: %s\n", 
+			staplib_dir_path, strerror(errno));
+		return -1;
+	}
+	/* Make sure it is a directory. */
+	if (! S_ISDIR(sb.st_mode)) {
+		fprintf(stderr, 
+			"ERROR: Members of the \"stapusr\" group can only use modules within\n"
+			"  the \"%s\" directory.\n"
+			"  That path must refer to a directory.\n",
+			staplib_dir_path);
+		return -1;
+	}
+	/* Make sure it is owned by root. */
+	if (sb.st_uid != 0) {
+		fprintf(stderr, 
+			"ERROR: Members of the \"stapusr\" group can only use modules within\n"
+			"  the \"%s\" directory.\n"
+			"  That directory should be owned by root.\n",
+			staplib_dir_path);
+		return -1;
+	}
+	/* Make sure it isn't world writable. */
+	if (sb.st_mode & S_IWOTH) {
+		fprintf(stderr, 
+			"ERROR: Members of the \"stapusr\" group can only use modules within\n"
+			"  the \"%s\" directory.\n"
+			"  That directory should not be world writable.\n",
+			staplib_dir_path);
+		return -1;
+	}
+
 	/* Use realpath() to canonicalize the module directory
 	 * path. */
 	if (realpath(staplib_dir_path, staplib_dir_realpath) == NULL) {
-		if (errno == ENOENT)
-			fprintf(stderr, 
-				"ERROR: Members of the \"stapusr\" group can only use modules within\n"
-				"  the \"%s\" directory.\n"
-				"  That directory does not exist.\n",
-				staplib_dir_path);
-		else
-			fprintf(stderr,
-				"ERROR: Unable to canonicalize path \"%s\": %s\n",
-				staplib_dir_path, strerror(errno));
+		fprintf(stderr,
+			"ERROR: Members of the \"stapusr\" group can only use modules within\n"
+			"  the \"%s\" directory.\n"
+			"  Unable to canonicalize that directory: %s\n",
+			staplib_dir_path, strerror(errno));
 		return -1;
 	}
 

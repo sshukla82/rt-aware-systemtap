@@ -1,3 +1,8 @@
+2007-07-26  David Smith  <dsmith@redhat.com>
+
+	* staprun_funcs.c (check_path): Validates the /lib/modules/`uname
+	-r`/systemtap directory.
+
 2007-07-25  David Smith  <dsmith@redhat.com>
 
 	* common.c (parse_args): Improved argument handling by disallowing
