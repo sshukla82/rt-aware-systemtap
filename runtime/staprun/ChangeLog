@@ -1,3 +1,8 @@
+2007-07-26  Martin Hunt  <hunt@redhat.com>
+
+	* staprun.c (run_stapio): Set argv[0] to stapio
+	so that it executes as itself instead of staprun.
+
 2007-07-26  David Smith  <dsmith@redhat.com>
 
 	* staprun_funcs.c (check_path): Validates the /lib/modules/`uname

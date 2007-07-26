@@ -68,8 +68,18 @@ static int run_stapio(char **argv)
 {
 	uid_t uid = getuid();
 	gid_t gid = getgid();
-	dbug (2, "execing stapio\n");
-	return run_as(uid, gid, PKGLIBDIR "/stapio", argv);
+	argv[0] = PKGLIBDIR "/stapio";
+
+	if (verbose >= 2) {
+		int i = 0;
+		fprintf(stderr, "execing: ");
+		while (argv[i]) {
+			fprintf(stderr, "%s ", argv[i]);
+			i++;
+		}
+		fprintf(stderr, "\n");		
+	}
+	return run_as(uid, gid, argv[0], argv);
 }
 
 
