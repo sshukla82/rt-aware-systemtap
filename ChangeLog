@@ -1,3 +1,10 @@
+2007-07-27  David Smith  <dsmith@redhat.com>
+
+	* stap.1.in: Removed sudo references and added information about
+	the stapdev/stapusr groups.
+	* staprun.8.in: Ditto.
+	* INTERNALS: Removed sudo reference.
+
 2007-07-19  David Smith  <dsmith@redhat.com>
 
 	* configure.ac: Added AC_PROG_MKDIR_P, which seems to be a new
