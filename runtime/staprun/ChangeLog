@@ -1,3 +1,7 @@
+2007-07-30  Martin Hunt  <hunt@redhat.com>
+
+	* staprun.c (main): If no modulename was given, display usage and exit.
+
 2007-07-26  Martin Hunt  <hunt@redhat.com>
 
 	* staprun.c (run_stapio): Set argv[0] to stapio

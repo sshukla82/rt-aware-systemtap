@@ -169,7 +169,8 @@ int main(int argc, char **argv)
 		strcpy(modpath, argv[optind++]);
 		path_parse_modname(modpath);
 		dbug(2, "modpath=\"%s\", modname=\"%s\"\n", modpath, modname);
-	}
+	} else
+		usage(argv[0]);
 
         if (optind < argc) {
 		if (attach_mod) {
