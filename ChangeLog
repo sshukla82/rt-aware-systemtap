@@ -1,3 +1,8 @@
+2007-07-30  David Smith  <dsmith@redhat.com>
+
+	* staprun.8.in: Added information about module detaching and
+	attaching.
+
 2007-07-27  David Smith  <dsmith@redhat.com>
 
 	* stap.1.in: Removed sudo references and added information about

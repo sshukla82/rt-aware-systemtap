@@ -72,7 +72,8 @@ Attach to loaded systemtap module.
 .SH ARGUMENTS
 .B MODULE
 is either a module path or a module name.  If it is a module name,
-the module will be looked for in the following directory:
+the module will be looked for in the following directory
+(where 'VERSION' is the output of "uname -r"):
 .IP
 /lib/modules/VERSION/systemtap
 .PP
@@ -106,7 +107,20 @@ with the pathname to the module as an argument.
 \& $ staprun /home/user/.systemtap/cache/85/stap_8553d83f78c_265.ko
 .br
 \& Hello World!
-
+.SH MODULE DETACHING AND ATTACHING
+After the
+.I staprun
+program installs a Systemtap kernel module, users can detach from the
+kernel module and reattach to it later.  The
+.B \-L
+option loads the module and automatically detaches.  Users can also
+detach from the kernel module interactively by sending the SIGQUIT
+signal from the keyboard (typically by typing Ctrl\-\\).
+.PP
+To reattach to a kernel module, the
+.I staprun
+.B \-A
+option would be used.
 .SH SAFETY AND SECURITY
 Systemtap is an administrative tool.  It exposes kernel internal data
 structures and potentially private user information.  See the 
