@@ -146,11 +146,13 @@ int main(int argc, char **argv)
 
 	/* Get rid of a few standard environment variables (which */
 	/* might cause us to do unintended things). */
-	rc =  unsetenv("IFS") || unsetenv("CDPATH") || unsetenv("ENV")
+	rc = unsetenv("IFS") || unsetenv("CDPATH") || unsetenv("ENV")
 		|| unsetenv("BASH_ENV");
-	if (rc)
+	if (rc) {
 		fprintf(stderr, "ERROR: unsetenv failed: %s\n",
 			strerror(errno));
+		exit(-1);
+	}
 	
 	setup_signals();
 
@@ -162,19 +164,20 @@ int main(int argc, char **argv)
 	if (optind < argc) {
 		if (strlen(argv[optind]) > sizeof(modpath)) {
 			fprintf(stderr,
-				"Module path '%s' is larger than buffer.\n",
+				"ERROR: Module path '%s' is larger than buffer.\n",
 				argv[optind]);
 			exit(-1);
 		}
+		/* No need to check for overflow because of check
+		 * above. */
 		strcpy(modpath, argv[optind++]);
 		path_parse_modname(modpath);
 		dbug(2, "modpath=\"%s\", modname=\"%s\"\n", modpath, modname);
-	} else
-		usage(argv[0]);
+	}
 
         if (optind < argc) {
 		if (attach_mod) {
-			fprintf(stderr, "Cannot have module options with attach (-A).\n");
+			fprintf(stderr, "ERROR: Cannot have module options with attach (-A).\n");
 			usage(argv[0]);
 		} else {
 			unsigned start_idx = 0;
@@ -184,8 +187,8 @@ int main(int argc, char **argv)
 		}
 	}
 
-	if (!modpath) {
-		fprintf (stderr, "Need a module to load.\n");
+	if (*modpath == '\0') {
+		fprintf(stderr, "ERROR: Need a module name or path to load.\n");
 		usage(argv[0]);
 	}
 

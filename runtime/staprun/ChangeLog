@@ -1,3 +1,9 @@
+2007-07-31  David Smith  <dsmith@redhat.com>
+
+	* staprun.c (main): Standardized error messages.  Better fix for
+	no module name/path problem.
+	* stapio.c (main): Ditto.
+
 2007-07-30  Martin Hunt  <hunt@redhat.com>
 
 	* staprun.c (main): If no modulename was given, display usage and exit.
