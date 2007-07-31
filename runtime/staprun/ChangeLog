@@ -1,5 +1,22 @@
 2007-07-31  David Smith  <dsmith@redhat.com>
 
+	PR 4795
+	* mainloop.c (send_request): Fixed buffer overflow check.
+	* staprun.h: Added buffer overflow checking versions of
+	strcpy/sprintf/snprintf.
+	* common.c (path_parse_modname): Checks for overflows on
+	strcpy/sprintf/snprintf.
+	* ctl.c (read_buffer_info): Ditto.
+	(init_ctl_channel): Ditto.
+	* relay.c (init_relayfs): Ditto.
+	* relay_old.c (open_relayfs_files): Ditto.
+	(init_oldrelayfs): Ditto.
+	* staprun_funcs.c (insert_module): Ditto.
+	(check_path): Ditto.
+	* symbols.c (get_sections): Ditto.
+
+2007-07-31  David Smith  <dsmith@redhat.com>
+
 	* common.c (path_parse_modname): Check for module name length.
 	* staprun.h: Added MODULE_NAME_LEN define.
 

@@ -67,6 +67,44 @@
 			_rc;				\
 		})					\
 
+/* Error checking version of strcpy() */
+#define strcpy_err(dest, src) ({					\
+	char *_rc = strncpy(dest, src, sizeof(dest));			\
+	if (dest[sizeof(dest) - 1] != '\0') {				\
+		fprintf(stderr,						\
+			"Internal buffer overflow in %s(%s:%d)\n",	\
+			__FUNCTION__, __FILE__, __LINE__);		\
+		exit(1);						\
+	}								\
+	_rc;								\
+})
+
+/* Error checking version of sprintf() */
+#define sprintf_err(str, args...) ({					\
+	int _rc;							\
+	_rc = snprintf(str, sizeof(str), args);				\
+	if (_rc >= (int)sizeof(str)) {					\
+		fprintf(stderr,						\
+			"Internal buffer overflow in %s(%s:%d)\n",	\
+			__FUNCTION__, __FILE__, __LINE__);		\
+		exit(1);						\
+	}								\
+	_rc;								\
+})
+
+/* Error checking version of snprintf() */
+#define snprintf_err(str, size, args...) ({				\
+	int _rc;							\
+	_rc = snprintf(str, size, args);				\
+	if (_rc >= (int)size) {						\
+		fprintf(stderr,						\
+			"Internal buffer overflow in %s(%s:%d)\n",	\
+			__FUNCTION__, __FILE__, __LINE__);		\
+		exit(1);						\
+	}								\
+	_rc;								\
+})
+
 /* Grabbed from linux/module.h kernel include. */
 #define MODULE_NAME_LEN (64 - sizeof(unsigned long))
 

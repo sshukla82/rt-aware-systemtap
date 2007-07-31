@@ -184,9 +184,9 @@ void path_parse_modname (char *path)
 
 			/* Build the module path, which will look like
 			 * '/lib/modules/KVER/systemtap/{path}.ko'. */
-			sprintf(tmp_path, "/lib/modules/%s/systemtap/%s.ko",
-				utsbuf.release, path);
-			strcpy(path, tmp_path);
+			sprintf_err(tmp_path, "/lib/modules/%s/systemtap/%s.ko",
+				    utsbuf.release, path);
+			strcpy_err(path, tmp_path);
 
 			mptr = rindex(path, '/');
 			mptr++;
@@ -201,6 +201,8 @@ void path_parse_modname (char *path)
 	if (!modname)
 		fatal("Memory allocation failed. Exiting.\n");
 
+	/* No need to check for overflow since buffer was allocated
+	 * to be the correct size. */
 	strcpy(modname, mptr);
 	
 	mptr = rindex(modname, '.');

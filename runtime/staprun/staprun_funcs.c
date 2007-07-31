@@ -64,7 +64,7 @@ int insert_module(void)
 			strerror(errno));
 		return -1;
 	}
-	sprintf(opts, "_stp_bufsize=%d", buffer_size);
+	snprintf_err(opts, 128, "_stp_bufsize=%d", buffer_size);
 	for (i = 0; modoptions[i] != NULL; i++) {
 		opts = realloc(opts, strlen(opts) + strlen(modoptions[i]) + 2);
 		if (opts == NULL) {
@@ -254,8 +254,8 @@ check_path(void)
 			strerror(errno));
 		return -1;
 	}
-	sprintf(staplib_dir_path, "/lib/modules/%s/systemtap",
-		utsbuf.release);
+	sprintf_err(staplib_dir_path, "/lib/modules/%s/systemtap",
+		    utsbuf.release);
 
 	/* Validate /lib/modules/KVER/systemtap. */
 	if (stat(staplib_dir_path, &sb) < 0) {

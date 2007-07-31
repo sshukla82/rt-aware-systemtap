@@ -61,12 +61,14 @@ static void setup_main_signals(int cleanup)
 int send_request(int type, void *data, int len)
 {
 	char buf[1024];
-	if (len > (int)sizeof(buf)) {
+
+	/* Before doing memcpy, make sure 'buf' is big enough. */
+	if ((len + 4) > (int)sizeof(buf)) {
 		err("exceeded maximum send_request size.\n");
 		return -1;
 	}
 	memcpy(buf, &type, 4);
-	memcpy(&buf[4],data,len);
+	memcpy(&buf[4], data, len);
 	return write(control_channel, buf, len+4);
 }
 

@@ -48,11 +48,22 @@ static int get_sections(char *name, char *data_start, int datalen)
 	if ((secdir = opendir(dir)) == NULL)
 		return 0;
 
+	/* Initialize mod. */
 	memset(mod, 0, sizeof(struct _stp_module));
+
+	/* Copy name in and check for overflow. */
 	strncpy(mod->name, name, STP_MODULE_NAME_LEN);
+	if (mod->name[STP_MODULE_NAME_LEN - 1] != '\0') {
+		fprintf(stderr, "ERROR: couldn't fit module name \"%s\" into mod->name buffer.\n", name);
+		fprintf(stderr, "This should never happen. Please file a bug report.\n");
+		cleanup_and_exit(1);
+	}
+	
 
 	while ((d = readdir(secdir))) {
 		char *secname = d->d_name;
+
+		/* Copy filename in and check for overflow. */
 		res = snprintf(filename, sizeof(filename), "/sys/module/%s/sections/%s", name, secname);
 		if (res >= (int)sizeof(filename)) {
 			fprintf(stderr, "ERROR: couldn't fit secname \"%s\" into filename buffer.\n", secname);
@@ -60,6 +71,7 @@ static int get_sections(char *name, char *data_start, int datalen)
 			closedir(secdir);
 			cleanup_and_exit(1);
 		}
+
 		if ((fd = open(filename,O_RDONLY)) >= 0) {
 			if (read(fd, buf, 32) > 0) {
 
@@ -85,8 +97,10 @@ static int get_sections(char *name, char *data_start, int datalen)
 				sec->symbol = (char *)(strdata - strdata_start);
 				mod->num_sections++;
 
-				/* now create string data for the section */
-				if (strdata - strdata_start + strlen(strdata) >= sizeof(strdata_start))
+				/* now create string data for the
+				 * section (checking for overflow) */
+				if ((strdata - strdata_start + strlen(strdata))
+				    >= sizeof(strdata_start))
 					goto err1;
 				strcpy(strdata, secname);
 				strdata += strlen(secname) + 1;

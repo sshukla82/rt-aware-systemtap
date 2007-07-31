@@ -25,7 +25,7 @@ static void read_buffer_info(void)
  	if (statfs("/sys/kernel/debug", &st) == 0 && (int) st.f_type == (int) DEBUGFS_MAGIC)
 		return;
 
-	sprintf (buf, "/proc/systemtap/%s/bufsize", modname);	
+	sprintf_err(buf, "/proc/systemtap/%s/bufsize", modname);	
 	fd = open(buf, O_RDONLY);
 	if (fd < 0)
 		return;
@@ -53,9 +53,9 @@ int init_ctl_channel(void)
 	struct statfs st;
 
  	if (statfs("/sys/kernel/debug", &st) == 0 && (int) st.f_type == (int) DEBUGFS_MAGIC)
- 		sprintf (buf, "/sys/kernel/debug/systemtap/%s/cmd", modname);
+		sprintf_err(buf, "/sys/kernel/debug/systemtap/%s/cmd", modname);
 	else
-		sprintf (buf, "/proc/systemtap/%s/cmd", modname);
+		sprintf_err(buf, "/proc/systemtap/%s/cmd", modname);
 
 	dbug(2, "Opening %s\n", buf); 
 	control_channel = open(buf, O_RDWR);
