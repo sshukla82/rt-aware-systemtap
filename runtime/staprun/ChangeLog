@@ -1,5 +1,8 @@
 2007-07-31  David Smith  <dsmith@redhat.com>
 
+	* common.c (path_parse_modname): Check for module name length.
+	* staprun.h: Added MODULE_NAME_LEN define.
+
 	* staprun.c (main): Standardized error messages.  Better fix for
 	no module name/path problem.
 	* stapio.c (main): Ditto.

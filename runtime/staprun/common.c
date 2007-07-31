@@ -206,6 +206,16 @@ void path_parse_modname (char *path)
 	mptr = rindex(modname, '.');
 	if (mptr)
 		*mptr = '\0';
+
+	/* We've finally got a real modname.  Make sure it isn't too
+	 * long.  If it is too long, init_module() will appear to
+	 * work, but the module can't be removed (because you end up
+	 * with control characters in the module name). */
+	if (strlen(modname) > MODULE_NAME_LEN) {
+		fprintf(stderr, "ERROR: Module name ('%s') too long.\n",
+			modname);
+		exit(-1);
+	}
 }
 
 #define ERR_MSG "\nUNEXPECTED FATAL ERROR in staprun. Please file a bug report.\n"
