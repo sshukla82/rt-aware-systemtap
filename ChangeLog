@@ -1,3 +1,9 @@
+2007-07-31  David Smith  <dsmith@redhat.com>
+
+	* main.cxx (main): Make sure module name isn't too long.
+	* hash.cxx: Moved MODULE_NAME_LEN define to hash.h.
+	* hash.h: Moved MODULE_NAME_LEN define here from hash.cxx.
+	
 2007-07-30  David Smith  <dsmith@redhat.com>
 
 	* staprun.8.in: Added information about module detaching and
