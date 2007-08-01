@@ -137,34 +137,34 @@ void usage(char *prog)
 }
 
 /*
- * path_parse_modname.  Here's how this code interprets 'path':
+ * parse_modpath.  Here's how this code interprets the global modpath:
  *
- * (1) If path contains a '/', it is assumed to be an absolute or
+ * (1) If modpath contains a '/', it is assumed to be an absolute or
  * relative file path to a module (such as "../foo.ko" or
  * "/tmp/stapXYZ/stap_foo.ko").
  *
- * (2) If path doesn't contain a '/' and ends in '.ko', it is a file
+ * (2) If modpath doesn't contain a '/' and ends in '.ko', it is a file
  * path to a module in the current directory (such as "foo.ko").
  *
- * (3) If path doesn't contain a '/' and doesn't end in '.ko', then
+ * (3) If modpath doesn't contain a '/' and doesn't end in '.ko', then
  * it is a module name and the full pathname of the module is
  * '/lib/modules/`uname -r`/systemtap/PATH.ko'.  For instance, if
- * path was "foo", the full module pathname would be
+ * modpath was "foo", the full module pathname would be
  * '/lib/modules/`uname -r`/systemtap/foo.ko'.
  */
-void path_parse_modname (char *path)
+void parse_modpath(void)
 {
-	char *mptr = rindex(path, '/');
+	char *mptr = rindex(modpath, '/');
 
 	/* If we couldn't find a '/', ... */
 	if (mptr == NULL) {
-		size_t plen = strlen(path);
+		size_t plen = strlen(modpath);
 
-		/* If the path ends with the '.ko' file extension,
+		/* If the modpath ends with the '.ko' file extension,
 		 * then we've got a module in the current
 		 * directory. */
-		if (plen > 3 && strcmp(&path[plen - 3], ".ko") == 0)
-			mptr = path;
+		if (plen > 3 && strcmp(&modpath[plen - 3], ".ko") == 0)
+			mptr = modpath;
 		/* If we didn't find the '.ko' file extension, then
 		 * we've just got a module name, not a module path.
 		 * Look for the module in /lib/modules/`uname
@@ -185,10 +185,10 @@ void path_parse_modname (char *path)
 			/* Build the module path, which will look like
 			 * '/lib/modules/KVER/systemtap/{path}.ko'. */
 			sprintf_err(tmp_path, "/lib/modules/%s/systemtap/%s.ko",
-				    utsbuf.release, path);
-			strcpy_err(path, tmp_path);
+				    utsbuf.release, modpath);
+			strcpy_err(modpath, tmp_path);
 
-			mptr = rindex(path, '/');
+			mptr = rindex(modpath, '/');
 			mptr++;
 		}
 	}
@@ -214,7 +214,7 @@ void path_parse_modname (char *path)
 	 * work, but the module can't be removed (because you end up
 	 * with control characters in the module name). */
 	if (strlen(modname) > MODULE_NAME_LEN) {
-		fprintf(stderr, "ERROR: Module name ('%s') too long.\n",
+		fprintf(stderr, "ERROR: Module name ('%s') is too long.\n",
 			modname);
 		exit(-1);
 	}

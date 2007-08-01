@@ -1,3 +1,12 @@
+2007-08-01  David Smith  <dsmith@redhat.com>
+
+	* common.c (parse_modpath): Renamed from path_parse_modname and no
+	longer takes an option - just operates on the 'modpath' global.
+	* stapio.c (main): Calls parse_modpath instead of
+	path_parse_modname.
+	* staprun.c (main): Ditto.
+	* staprun.h: Renamed path_parse_modname to parse_modpath.
+	
 2007-07-31  David Smith  <dsmith@redhat.com>
 
 	PR 4795

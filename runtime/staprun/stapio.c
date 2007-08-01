@@ -44,7 +44,7 @@ int main(int argc, char **argv)
 		/* No need to check for overflow because of check
 		 * above. */
 		strcpy(modpath, argv[optind++]);
-		path_parse_modname(modpath);
+		parse_modpath();
 		dbug(2, "modpath=\"%s\", modname=\"%s\"\n", modpath, modname);
 	}
 

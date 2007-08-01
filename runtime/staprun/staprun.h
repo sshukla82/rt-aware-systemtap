@@ -151,7 +151,7 @@ int check_permissions(void);
 /* common.c functions */
 void parse_args(int argc, char **argv);
 void usage(char *prog);
-void path_parse_modname (char *path);
+void parse_modpath(void);
 void setup_signals(void);
 
 /*
