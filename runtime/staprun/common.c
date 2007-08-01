@@ -49,17 +49,14 @@ void parse_args(int argc, char **argv)
 			verbose++;
 			break;
 		case 'b':
-		{
-			int size = (unsigned)atoi(optarg);
-			if (!size)
+			buffer_size = (unsigned)atoi(optarg);
+			if (buffer_size < 1 || buffer_size > 64) {
+				fprintf(stderr,
+					"Invalid buffer size '%d' (should be 1-64).\n",
+					buffer_size);
 				usage(argv[0]);
-			if (size > 64) {
-				fprintf(stderr, "Maximum buffer size is 64 (MB)\n");
-				exit(1);
 			}
-			buffer_size = size;
 			break;
-		}
 		case 't':
 		case 'x':
 			target_pid = atoi(optarg);

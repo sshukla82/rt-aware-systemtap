@@ -1,5 +1,7 @@
 2007-08-01  David Smith  <dsmith@redhat.com>
 
+	* common.c (parse_args): Improved buffer size error handling.
+	
 	* common.c (parse_modpath): Renamed from path_parse_modname and no
 	longer takes an option - just operates on the 'modpath' global.
 	* stapio.c (main): Calls parse_modpath instead of
