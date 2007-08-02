@@ -1,3 +1,18 @@
+2007-08-02  David Smith  <dsmith@redhat.com>
+
+	* staprun.h: Changed overflow checking strcpy/sprintf/snprintf
+	macros to return a 1 if overflow occurred.
+	* common.c (parse_modpath): Updated with new buffer overflow
+	macro handling.
+	* ctl.c (read_buffer_info): Ditto.
+	(init_ctl_channel): Ditto.
+	* relay.c (init_relayfs): Ditto.
+	* relay_old.c (open_relayfs_files): Ditto.
+	(open_relayfs_files): Ditto.
+	(init_oldrelayfs): Ditto.
+	* staprun_funcs.c (insert_module): Ditto.
+	(check_path): Ditto.
+
 2007-08-01  David Smith  <dsmith@redhat.com>
 
 	* common.c (parse_args): Improved buffer size error handling.

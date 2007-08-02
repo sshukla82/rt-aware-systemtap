@@ -130,9 +130,13 @@ int init_relayfs(void)
 	relay_fd[0] = 0;
 	out_fd[0] = 0;
 
- 	if (statfs("/sys/kernel/debug", &st) == 0 && (int) st.f_type == (int) DEBUGFS_MAGIC)
-		sprintf_err(relay_filebase, "/sys/kernel/debug/systemtap/%s",
-			    modname);
+ 	if (statfs("/sys/kernel/debug", &st) == 0
+	    && (int) st.f_type == (int) DEBUGFS_MAGIC) {
+		if (sprintf_chk(relay_filebase,
+				"/sys/kernel/debug/systemtap/%s",
+				modname))
+			return -1;
+	}
  	else {
 		fprintf(stderr,"Cannot find relayfs or debugfs mount point.\n");
 		return -1;
@@ -142,7 +146,8 @@ int init_relayfs(void)
 		bulkmode = 1;
 
 	for (i = 0; i < NR_CPUS; i++) {
-		sprintf_err(buf, "%s/trace%d", relay_filebase, i);
+		if (sprintf_chk(buf, "%s/trace%d", relay_filebase, i))
+			return -1;
 		dbug(2, "attempting to open %s\n", buf);
 		relay_fd[i] = open(buf, O_RDONLY | O_NONBLOCK);
 		if (relay_fd[i] < 0)
@@ -165,13 +170,18 @@ int init_relayfs(void)
 		for (i = 0; i < ncpus; i++) {
 			if (outfile_name) {
 				/* special case: for testing we sometimes want to write to /dev/null */
-				if (strcmp(outfile_name, "/dev/null") == 0)
-					strcpy_err(buf, outfile_name);
-				else
-					sprintf_err(buf, "%s_%d", outfile_name,
-						    i);
-			} else
-				sprintf_err(buf, "stpd_cpu%d", i);
+				if (strcmp(outfile_name, "/dev/null") == 0) {
+					if (strcpy_chk(buf, outfile_name))
+						return -1;
+				} else {
+					if (sprintf_chk(buf, "%s_%d",
+							outfile_name, i))
+						return -1;
+				}
+			} else {
+				if (sprintf_chk(buf, "stpd_cpu%d", i))
+					return -1;
+			}
 			
 			out_fd[i] = open (buf, O_CREAT|O_TRUNC|O_WRONLY, 0666);
 			if (out_fd[i] < 0) {

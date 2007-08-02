@@ -181,9 +181,12 @@ void parse_modpath(void)
 
 			/* Build the module path, which will look like
 			 * '/lib/modules/KVER/systemtap/{path}.ko'. */
-			sprintf_err(tmp_path, "/lib/modules/%s/systemtap/%s.ko",
-				    utsbuf.release, modpath);
-			strcpy_err(modpath, tmp_path);
+			if (sprintf_chk(tmp_path,
+					"/lib/modules/%s/systemtap/%s.ko",
+					utsbuf.release, modpath))
+				exit(-1);
+			if (strcpy_chk(modpath, tmp_path))
+				exit(-1);
 
 			mptr = rindex(modpath, '/');
 			mptr++;

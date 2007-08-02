@@ -82,7 +82,8 @@ static int open_relayfs_files(int cpu, const char *relay_filebase, const char *p
 	memset(&status[cpu], 0, sizeof(struct buf_status));
 	status[cpu].info.cpu = cpu;
 
-	sprintf_err(tmp, "%s%d", relay_filebase, cpu);
+	if (sprintf_chk(tmp, "%s%d", relay_filebase, cpu))
+		return -1;
 	dbug(2, "Opening %s.\n", tmp); 
 	relay_fd[cpu] = open(tmp, O_RDONLY | O_NONBLOCK);
 	if (relay_fd[cpu] < 0) {
@@ -90,7 +91,8 @@ static int open_relayfs_files(int cpu, const char *relay_filebase, const char *p
 		return 0;
 	}
 
-	sprintf_err(tmp, "%s%d", proc_filebase, cpu);
+	if (sprintf_chk(tmp, "%s%d", proc_filebase, cpu))
+		goto err1;
 	dbug(2, "Opening %s.\n", tmp); 
 	proc_fd[cpu] = open(tmp, O_RDWR | O_NONBLOCK);
 	if (proc_fd[cpu] < 0) {
@@ -102,12 +104,17 @@ static int open_relayfs_files(int cpu, const char *relay_filebase, const char *p
 	if (outfile_name) {
 		/* special case: for testing we sometimes want to
 		 * write to /dev/null */
-		if (strcmp(outfile_name, "/dev/null") == 0)
-			strcpy_err(tmp, outfile_name);
-		else
-			sprintf_err(tmp, "%s_%d", outfile_name, cpu);
-	} else
-		sprintf_err(tmp, "stpd_cpu%d", cpu);	
+		if (strcmp(outfile_name, "/dev/null") == 0) {
+			if (strcpy_chk(tmp, outfile_name))
+				goto err1;
+		} else {
+			if (sprintf_chk(tmp, "%s_%d", outfile_name, cpu))
+				goto err1;
+		}
+	} else {
+		if (sprintf_chk(tmp, "stpd_cpu%d", cpu))
+			goto err1;
+	}
 
 	if((percpu_tmpfile[cpu] = fopen(tmp, "w+")) == NULL) {
 		fprintf(stderr, "ERROR: Couldn't open output file %s: %s\n",
@@ -253,15 +260,22 @@ int init_oldrelayfs(void)
 	  return 0;
 	}
 
- 	if (statfs("/sys/kernel/debug", &st) == 0 && (int) st.f_type == (int) DEBUGFS_MAGIC) {
-		sprintf_err(relay_filebase,
-			    "/sys/kernel/debug/systemtap/%s/trace", modname);
- 		sprintf_err(proc_filebase, 
-			    "/sys/kernel/debug/systemtap/%s/", modname);
-	} else if (statfs("/mnt/relay", &st) == 0 && (int) st.f_type == (int) RELAYFS_MAGIC) {
- 		sprintf_err(relay_filebase, "/mnt/relay/systemtap/%s/trace",
-			    modname);
- 		sprintf_err(proc_filebase, "/proc/systemtap/%s/", modname);
+ 	if (statfs("/sys/kernel/debug", &st) == 0
+	    && (int) st.f_type == (int) DEBUGFS_MAGIC) {
+		if (sprintf_chk(relay_filebase,
+				"/sys/kernel/debug/systemtap/%s/trace",
+				modname))
+			return -1;
+ 		if (sprintf_chk(proc_filebase, 
+				"/sys/kernel/debug/systemtap/%s/", modname))
+			return -1;
+	} else if (statfs("/mnt/relay", &st) == 0
+		   && (int) st.f_type == (int) RELAYFS_MAGIC) {
+		if (sprintf_chk(relay_filebase, "/mnt/relay/systemtap/%s/trace",
+				modname))
+			return -1;
+		if (sprintf_chk(proc_filebase, "/proc/systemtap/%s/", modname))
+			return -1;
  	} else {
 		fprintf(stderr,"Cannot find relayfs or debugfs mount point.\n");
 		return -1;

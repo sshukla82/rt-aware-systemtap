@@ -67,42 +67,49 @@
 			_rc;				\
 		})					\
 
-/* Error checking version of strcpy() */
-#define strcpy_err(dest, src) ({					\
-	char *_rc = strncpy(dest, src, sizeof(dest));			\
-	if (dest[sizeof(dest) - 1] != '\0') {				\
-		fprintf(stderr,						\
-			"Internal buffer overflow in %s(%s:%d)\n",	\
-			__FUNCTION__, __FILE__, __LINE__);		\
-		exit(1);						\
-	}								\
-	_rc;								\
+#define overflow_error() {					\
+	fprintf(stderr,						\
+		"Internal buffer overflow in %s(%s:%d)\n",	\
+		__FUNCTION__, __FILE__, __LINE__);		\
+}
+
+/* Error checking version of strcpy() - returns 1 if overflow error */
+#define strcpy_chk(dest, src) ({			\
+	int _rc;					\
+	strncpy(dest, src, sizeof(dest));		\
+	if (dest[sizeof(dest) - 1] != '\0') {		\
+		overflow_error();			\
+		_rc = 1;				\
+	}						\
+	else						\
+		_rc = 0;				\
+	_rc;						\
 })
 
-/* Error checking version of sprintf() */
-#define sprintf_err(str, args...) ({					\
-	int _rc;							\
-	_rc = snprintf(str, sizeof(str), args);				\
-	if (_rc >= (int)sizeof(str)) {					\
-		fprintf(stderr,						\
-			"Internal buffer overflow in %s(%s:%d)\n",	\
-			__FUNCTION__, __FILE__, __LINE__);		\
-		exit(1);						\
-	}								\
-	_rc;								\
+/* Error checking version of sprintf() - returns 1 if overflow error */
+#define sprintf_chk(str, args...) ({			\
+	int _rc;					\
+	_rc = snprintf(str, sizeof(str), args);		\
+	if (_rc >= (int)sizeof(str)) {			\
+		overflow_error();			\
+		_rc = 1;				\
+	}						\
+	else						\
+		_rc = 0;				\
+	_rc;						\
 })
 
-/* Error checking version of snprintf() */
-#define snprintf_err(str, size, args...) ({				\
-	int _rc;							\
-	_rc = snprintf(str, size, args);				\
-	if (_rc >= (int)size) {						\
-		fprintf(stderr,						\
-			"Internal buffer overflow in %s(%s:%d)\n",	\
-			__FUNCTION__, __FILE__, __LINE__);		\
-		exit(1);						\
-	}								\
-	_rc;								\
+/* Error checking version of snprintf() - returns 1 if overflow error */
+#define snprintf_chk(str, size, args...) ({		\
+	int _rc;					\
+	_rc = snprintf(str, size, args);		\
+	if (_rc >= (int)size) {				\
+		overflow_error();			\
+		_rc = 1;				\
+	}						\
+	else						\
+		_rc = 0;				\
+	_rc;						\
 })
 
 /* Grabbed from linux/module.h kernel include. */
