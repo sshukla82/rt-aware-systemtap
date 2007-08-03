@@ -157,6 +157,10 @@ static int _stp_ctl_write (int type, void *data, int len)
 	spin_unlock_irqrestore(&_stp_ready_lock, flags);
 #endif
 
+	/* make sure we won't overflow the buffer */
+	if (unlikely(len > STP_BUFFER_SIZE))
+		return 0;
+
 	numtrylock = 0;
 	while (!spin_trylock_irqsave (&_stp_pool_lock, flags) && (++numtrylock < MAXTRYLOCK)) 
 		ndelay (TRYLOCKDELAY);

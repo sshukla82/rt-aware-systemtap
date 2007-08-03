@@ -79,11 +79,13 @@ static ssize_t _stp_ctl_write_cmd (struct file *file, const char __user *buf,
 	return count;
 }
 
+#define STP_CTL_BUFFER_SIZE 256
+
 struct _stp_buffer {
 	struct list_head list;
 	int len;
 	int type;
-	char buf[256];
+	char buf[STP_CTL_BUFFER_SIZE];
 };
 
 static DECLARE_WAIT_QUEUE_HEAD(_stp_ctl_wq);
@@ -133,6 +135,10 @@ static int _stp_ctl_write (int type, void *data, unsigned len)
 	_stp_ctl_write_dbug(type, data, len);
 #endif
 
+	/* make sure we won't overflow the buffer */
+	if (unlikely(len > STP_CTL_BUFFER_SIZE))
+		return 0;
+
 	numtrylock = 0;
 	while (!spin_trylock_irqsave (&_stp_pool_lock, flags) && (++numtrylock < MAXTRYLOCK)) 
 		ndelay (TRYLOCKDELAY);
@@ -151,7 +157,7 @@ static int _stp_ctl_write (int type, void *data, unsigned len)
 	spin_unlock_irqrestore(&_stp_pool_lock, flags);
 
 	bptr->type = type;
-	memcpy(bptr->buf, data, min((size_t) len, sizeof(bptr->buf)));
+	memcpy(bptr->buf, data, len);
 	bptr->len = len;
 	
 	/* put it on the pool of ready buffers */

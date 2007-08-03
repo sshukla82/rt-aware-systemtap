@@ -1,3 +1,8 @@
+2007-08-03  David Smith  <dsmith@redhat.com>
+
+	* control.c (_stp_ctl_write): Make sure we don't overflow. 
+	* procfs.c (_stp_ctl_write): Ditto.
+
 2007-08-03  Martin Hunt  <hunt@redhat.com>
 
 	* control.c (_stp_ctl_open_cmd): Do not allow multiple opens of
