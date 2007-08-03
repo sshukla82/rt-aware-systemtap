@@ -24,6 +24,9 @@
 
 int inserted_module = 0;
 
+/* used in dbug, _err and _perr */
+char *__name__ = "staprun";
+
 extern long delete_module(const char *, unsigned int);
 
 static int
@@ -33,7 +36,7 @@ run_as(uid_t uid, gid_t gid, const char *path, char *const argv[])
 	int rstatus;
 
 	if ((pid = fork()) < 0) {
-		fprintf(stderr, "ERROR: fork failed: %s\n", strerror(errno));
+		_perr("fork");
 		return -1;
 	}
 	else if (pid == 0) {
@@ -42,10 +45,14 @@ run_as(uid_t uid, gid_t gid, const char *path, char *const argv[])
 		 * that process to switch back to root (since the
 		 * original process is setuid). */
 		if (uid != getuid()) {
-			if (do_cap(CAP_SETGID, setresgid, gid, gid, gid) < 0)
-				ferror("setresgid");
-			if (do_cap(CAP_SETUID, setresuid, uid, uid, uid) < 0)
-				ferror("setresuid");
+			if (do_cap(CAP_SETGID, setresgid, gid, gid, gid) < 0) {
+				_perr("setresgid");
+				exit(1);
+			}
+			if (do_cap(CAP_SETUID, setresuid, uid, uid, uid) < 0) {
+				_perr("setresuid");
+				exit(1);
+			}
 		}
 
 		/* Actually run the command. */
@@ -72,12 +79,12 @@ static int run_stapio(char **argv)
 
 	if (verbose >= 2) {
 		int i = 0;
-		fprintf(stderr, "execing: ");
+		err("execing: ");
 		while (argv[i]) {
-			fprintf(stderr, "%s ", argv[i]);
+			err("%s ", argv[i]);
 			i++;
 		}
-		fprintf(stderr, "\n");		
+		err("\n");		
 	}
 	return run_as(uid, gid, argv[0], argv);
 }
@@ -121,10 +128,8 @@ static void cleanup(int rc)
 		long ret;
 		dbug(2, "removing module %s\n", modname);
 		ret = do_cap(CAP_SYS_MODULE, delete_module, modname, 0);
-		if (ret != 0) {
-			fprintf(stderr, "ERROR: Error removing module '%s': %s\n",
-				modname, moderror(errno));
-		}
+		if (ret != 0)
+			err("Error removing module '%s': %s\n", modname, moderror(errno));
 	}
 }
 
@@ -138,8 +143,10 @@ int main(int argc, char **argv)
 {
 	int rc;
 
-	if (atexit(exit_cleanup))
-		ferror("cannot set exit function\n");
+	if (atexit(exit_cleanup)) {
+		_perr("cannot set exit function");
+		exit(1);
+	}
 
 	if (!init_cap())
 		return 1;
@@ -149,35 +156,25 @@ int main(int argc, char **argv)
 	rc = unsetenv("IFS") || unsetenv("CDPATH") || unsetenv("ENV")
 		|| unsetenv("BASH_ENV");
 	if (rc) {
-		fprintf(stderr, "ERROR: unsetenv failed: %s\n",
-			strerror(errno));
+		_perr("unsetenv failed");
 		exit(-1);
 	}
-	
+
 	setup_signals();
 
 	parse_args(argc, argv);
 
 	if (buffer_size)
-		dbug(1, "Using a buffer of %u bytes.\n", buffer_size);
+		dbug(2, "Using a buffer of %u bytes.\n", buffer_size);
 
 	if (optind < argc) {
-		if (strlen(argv[optind]) > sizeof(modpath)) {
-			fprintf(stderr,
-				"ERROR: Module path '%s' is larger than buffer.\n",
-				argv[optind]);
-			exit(-1);
-		}
-		/* No need to check for overflow because of check
-		 * above. */
-		strcpy(modpath, argv[optind++]);
-		parse_modpath();
+		parse_modpath(argv[optind++]);
 		dbug(2, "modpath=\"%s\", modname=\"%s\"\n", modpath, modname);
 	}
 
         if (optind < argc) {
 		if (attach_mod) {
-			fprintf(stderr, "ERROR: Cannot have module options with attach (-A).\n");
+			err("ERROR: Cannot have module options with attach (-A).\n");
 			usage(argv[0]);
 		} else {
 			unsigned start_idx = 0;
@@ -188,7 +185,7 @@ int main(int argc, char **argv)
 	}
 
 	if (*modpath == '\0') {
-		fprintf(stderr, "ERROR: Need a module name or path to load.\n");
+		err("ERROR: Need a module name or path to load.\n");
 		usage(argv[0]);
 	}
 
@@ -199,7 +196,7 @@ int main(int argc, char **argv)
 	rc = do_cap(CAP_SYS_NICE, setpriority, PRIO_PROCESS, 0, -10);
 	/* failure is not fatal in this case */
 	if (rc < 0)
-		perror("setpriority");
+		_perr("setpriority");
 
 	if (init_staprun())
 		exit(1);

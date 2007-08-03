@@ -60,8 +60,7 @@ int insert_module(void)
 
 	opts = malloc(128);
 	if (opts == NULL) {
-		fprintf(stderr, "ERROR: allocating memory failed: %s\n",
-			strerror(errno));
+		_perr("allocating memory failed");
 		return -1;
 	}
 	if (snprintf_chk(opts, 128, "_stp_bufsize=%d", buffer_size))
@@ -69,9 +68,7 @@ int insert_module(void)
 	for (i = 0; modoptions[i] != NULL; i++) {
 		opts = realloc(opts, strlen(opts) + strlen(modoptions[i]) + 2);
 		if (opts == NULL) {
-			fprintf(stderr,
-				"ERROR: reallocating memory failed: %s\n",
-				strerror(errno));
+			_perr("reallocating memory failed");
 			return -1;
 		}
 		strcat(opts, " ");
@@ -82,16 +79,14 @@ int insert_module(void)
 	/* Open the module file. */
 	fd = open(modpath, O_RDONLY);
 	if (fd < 0) {
-		fprintf(stderr, "ERROR: Error opening '%s': %s\n",
-			modpath, strerror(errno));
+		perr("Error opening '%s'", modpath);
 		return -1;
 	}
 	
 	/* Now that the file is open, figure out how big it is. */
 	if (fstat(fd, &sbuf) < 0) {
 		close(fd);
-		fprintf(stderr, "ERROR: Error stat'ing '%s': %s\n",
-			modpath, strerror(errno));
+		_perr("Error stat'ing '%s'", modpath);
 		return -1;
 	}
 
@@ -100,8 +95,7 @@ int insert_module(void)
 	if (file == MAP_FAILED) {
 		close(fd);
 		free(opts);
-		fprintf(stderr, "ERROR: Error mapping '%s': %s\n",
-			modpath, strerror(errno));
+		_perr("Error mapping '%s'", modpath);
 		return -1;
 	}
 	    
@@ -115,8 +109,7 @@ int insert_module(void)
 	close(fd);
 
 	if (ret != 0) {
-		fprintf(stderr, "ERROR: Error inserting module '%s': %s\n",
-			modpath, moderror(saved_errno));
+		err("Error inserting module '%s': %s\n", modpath, moderror(saved_errno));
 		return -1; 
 	}
 	return 0;
@@ -146,8 +139,7 @@ int mountfs(void)
 		 * supported, so we'll need try try relayfs.  If we
 		 * didn't get ENODEV, we got a real error. */
 		else if (errno != ENODEV) {
-			fprintf(stderr, "ERROR: Couldn't mount %s: %s\n",
-				DEBUGFSDIR, strerror(errno));
+			perr("Couldn't mount %s", DEBUGFSDIR);
 			return -1;
 		}
 	}
@@ -162,8 +154,7 @@ int mountfs(void)
 	/* Ensure that RELAYFSDIR exists and is a directory. */
 	rc = stat(RELAYFSDIR, &sb);
 	if (rc == 0 && ! S_ISDIR(sb.st_mode)) {
-		fprintf(stderr, "ERROR: %s exists but isn't a directory.\n",
-			RELAYFSDIR);
+		err("%s exists but isn't a directory.\n", RELAYFSDIR);
 		return -1;
 	}
 	else if (rc < 0) {
@@ -180,15 +171,11 @@ int mountfs(void)
 		 * proper group, we'll have to temporarily switch to
 		 * root. */
 		if (do_cap(CAP_SETUID, setuid, 0) < 0) {
-			fprintf(stderr,
-				"ERROR: Couldn't change user while creating %s: %s\n",
-				RELAYFSDIR, strerror(errno));
+			_perr("Couldn't change user while creating %s", RELAYFSDIR);
 			return -1;
 		}
 		if (do_cap(CAP_SETGID, setgid, 0) < 0) {
-			fprintf(stderr,
-				"ERROR: Couldn't change group while creating %s: %s\n",
-				RELAYFSDIR, strerror(errno));
+			_perr("Couldn't change group while creating %s", RELAYFSDIR);
 			return -1;
 		}
 
@@ -199,33 +186,25 @@ int mountfs(void)
 
 		/* Restore everything we changed. */
 		if (do_cap(CAP_SETGID, setgid, gid) < 0) {
-			fprintf(stderr,
-				"ERROR: Couldn't restore group while creating %s: %s\n",
-				RELAYFSDIR, strerror(errno));
+			_perr("Couldn't restore group while creating %s", RELAYFSDIR);
 			return -1;
 		}
 		if (do_cap(CAP_SETUID, setuid, uid) < 0) {
-			fprintf(stderr,
-				"ERROR: Couldn't restore user while creating %s: %s\n",
-				RELAYFSDIR, strerror(errno));
+			_perr("Couldn't restore user while creating %s", RELAYFSDIR);
 			return -1;
 		}
 		umask(old_umask);
 
 		/* If creating the directory failed, error out. */
 		if (rc < 0) {
-			fprintf(stderr, "ERROR: Couldn't create %s: %s\n",
-				RELAYFSDIR, strerror(saved_errno));
+			err("Couldn't create %s: %s\n", RELAYFSDIR, strerror(saved_errno));
 			return -1;
 		}
 	}
 
-	/* Now that we're sure the directory exists, try mounting
-	 * RELAYFSDIR. */
-	if (do_cap(CAP_SYS_ADMIN, mount, "relayfs", RELAYFSDIR,
-		   "relayfs", 0, NULL) < 0) {
-		fprintf(stderr, "ERROR: Couldn't mount %s: %s\n",
-			RELAYFSDIR, strerror(errno));
+	/* Now that we're sure the directory exists, try mounting RELAYFSDIR. */
+	if (do_cap(CAP_SYS_ADMIN, mount, "relayfs", RELAYFSDIR, "relayfs", 0, NULL) < 0) {
+		perr("Couldn't mount %s", RELAYFSDIR);
 		return -1;
 	}
 	return 0;
@@ -251,78 +230,64 @@ check_path(void)
 	/* First, we need to figure out what the kernel
 	 * version is and build the '/lib/modules/KVER/systemtap' path. */
 	if (uname(&utsbuf) != 0) {
-		err("ERROR: Unable to determine kernel version, uname failed: %s\n",
-			strerror(errno));
+		_perr("ERROR: Unable to determine kernel version, uname failed");
 		return -1;
 	}
-	if (sprintf_chk(staplib_dir_path, "/lib/modules/%s/systemtap",
-			utsbuf.release))
+	if (sprintf_chk(staplib_dir_path, "/lib/modules/%s/systemtap", utsbuf.release))
 		return -1;
 
 	/* Validate /lib/modules/KVER/systemtap. */
 	if (stat(staplib_dir_path, &sb) < 0) {
-		fprintf(stderr,
-			"ERROR: Members of the \"stapusr\" group can only use modules within\n"
-			"  the \"%s\" directory.\n"
-			"  Error getting information on that directory: %s\n", 
-			staplib_dir_path, strerror(errno));
+		perr("Members of the \"stapusr\" group can only use modules within\n"
+		     "  the \"%s\" directory.\n"
+		     "  Error getting information on that directory", staplib_dir_path);
 		return -1;
 	}
 	/* Make sure it is a directory. */
 	if (! S_ISDIR(sb.st_mode)) {
-		fprintf(stderr, 
-			"ERROR: Members of the \"stapusr\" group can only use modules within\n"
-			"  the \"%s\" directory.\n"
-			"  That path must refer to a directory.\n",
-			staplib_dir_path);
+		err("ERROR: Members of the \"stapusr\" group can only use modules within\n"
+		    "  the \"%s\" directory.\n"
+		    "  That path must refer to a directory.\n", staplib_dir_path);
 		return -1;
 	}
 	/* Make sure it is owned by root. */
 	if (sb.st_uid != 0) {
-		fprintf(stderr, 
-			"ERROR: Members of the \"stapusr\" group can only use modules within\n"
-			"  the \"%s\" directory.\n"
-			"  That directory should be owned by root.\n",
-			staplib_dir_path);
+		err("ERROR: Members of the \"stapusr\" group can only use modules within\n"
+		    "  the \"%s\" directory.\n"
+		    "  That directory should be owned by root.\n", staplib_dir_path);
 		return -1;
 	}
 	/* Make sure it isn't world writable. */
 	if (sb.st_mode & S_IWOTH) {
-		fprintf(stderr, 
-			"ERROR: Members of the \"stapusr\" group can only use modules within\n"
-			"  the \"%s\" directory.\n"
-			"  That directory should not be world writable.\n",
-			staplib_dir_path);
+		err("ERROR: Members of the \"stapusr\" group can only use modules within\n"
+		    "  the \"%s\" directory.\n"
+		    "  That directory should not be world writable.\n", staplib_dir_path);
 		return -1;
 	}
 
 	/* Use realpath() to canonicalize the module directory
 	 * path. */
 	if (realpath(staplib_dir_path, staplib_dir_realpath) == NULL) {
-		fprintf(stderr,
-			"ERROR: Members of the \"stapusr\" group can only use modules within\n"
-			"  the \"%s\" directory.\n"
-			"  Unable to canonicalize that directory: %s\n",
-			staplib_dir_path, strerror(errno));
+		perr("Members of the \"stapusr\" group can only use modules within\n"
+		     "  the \"%s\" directory.\n"
+		     "  Unable to canonicalize that directory",	staplib_dir_path);
 		return -1;
 	}
-
+	
 	/* Use realpath() to canonicalize the module path. */
 	if (realpath(modpath, module_realpath) == NULL) {
-		fprintf(stderr,"ERROR: Unable to canonicalize path \"%s\": %s\n",
-			modpath, strerror(errno));
+		perr("Unable to canonicalize path \"%s\"",modpath);
 		return -1;
 	}
-
+	
 	/* Now we've got two canonicalized paths.  Make sure
 	 * module_realpath starts with staplib_dir_realpath. */
 	if (strncmp(staplib_dir_realpath, module_realpath,
 		    strlen(staplib_dir_realpath)) != 0) {
-		fprintf(stderr,
-			"ERROR: Members of the \"stapusr\" group can only use modules within\n"
-			"  the \"%s\" directory.\n"
-			"  Module \"%s\" does not exist within that directory.\n",
-			staplib_dir_path, modpath);
+		err("ERROR: Members of the \"stapusr\" group can only use modules within\n"
+		    "  the \"%s\" directory.\n"
+		    "  Module \"%s\" does not exist within that directory.\n",
+		    staplib_dir_path, modpath);
 		return 0;
 	}
 	return 1;
@@ -370,7 +335,7 @@ int check_permissions(void)
 
 	/* If neither group was found, just return an error. */
 	if (stapdev_gid == (gid_t)-1 && stapusr_gid == (gid_t)-1) {
-		fprintf(stderr, "ERROR: unable to find either group \"stapdev\" or group \"stapusr\"\n");
+		err("ERROR: unable to find either group \"stapdev\" or group \"stapusr\"\n");
 		return -1;
 	}
 
@@ -385,8 +350,7 @@ int check_permissions(void)
 	/* Get the list of the user's groups. */
 	ngids = getgroups(NGROUPS_MAX, gidlist);
 	if (ngids < 0) {
-		fprintf(stderr, "ERROR: Unable to retrieve group list: %s\n",
-			strerror(errno));
+		perr("Unable to retrieve group list");
 		return -1;
 	}
 
@@ -409,7 +373,7 @@ int check_permissions(void)
 	/* If path_check is 0, then the user isn't a member of either
 	 * group.  Error out. */
 	if (path_check == 0) {
-		fprintf(stderr, "ERROR: you must be a member of either group \"stapdev\" or group \"stapusr\"\n");
+		err("ERROR: you must be a member of either group \"stapdev\" or group \"stapusr\"\n");
 		return 0;
 	}
 

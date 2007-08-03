@@ -23,6 +23,12 @@
 #include "staprun.h"
 #include <sys/prctl.h>
 
+/* like perror, but exits */
+#define ferror(msg) {						  \
+		_perr(msg);					  \
+		exit(1);					  \
+	}							  \
+		
 /*
  * init_cap() sets up the initial capabilities for staprun. Then
  * it calls prctl( PR_SET_KEEPCAPS) to arrrange to keep these capabilities
@@ -88,7 +94,7 @@ void print_cap(char *text)
 	gid_t gid, egid, sgid;
 
 	if (caps == NULL) {
-		perror("ERROR: cap_get_proc failed");
+		perr("cap_get_proc");
 		return;
 	}
 	
@@ -98,7 +104,7 @@ void print_cap(char *text)
 	printf("***** %s\n", text);
 
 	if ((p=prctl(PR_GET_KEEPCAPS, 0, 0, 0, 0)) < 0)
-		perror("ERROR: Couldn't get PR_SET_KEEPCAPS flag value");
+		perr("Couldn't get PR_SET_KEEPCAPS flag value");
 	else 
 		printf("KEEPCAPS: %d\n", p);
 
@@ -117,11 +123,11 @@ void drop_cap(cap_value_t cap)
 {
 	cap_t caps = cap_get_proc();
 	if (caps == NULL)
-		ferror("ERROR: cap_get_proc failed");
+		ferror("cap_get_proc failed");
 	if (cap_set_flag(caps, CAP_PERMITTED, 1, &cap, CAP_CLEAR) < 0)
-		ferror("ERROR: Could not clear effective capabilities");
+		ferror("Could not clear effective capabilities");
 	if (cap_set_proc(caps) < 0)
-		ferror("ERROR: Could not apply capability set");
+		ferror("Could not apply capability set");
 	cap_free(caps);
 }
 
@@ -130,11 +136,11 @@ void add_cap(cap_value_t cap)
 {
 	cap_t caps = cap_get_proc();
 	if (caps == NULL)
-		ferror("ERROR: cap_get_proc failed");
+		ferror("cap_get_proc failed");
 	if (cap_set_flag(caps, CAP_EFFECTIVE, 1, &cap, CAP_SET) < 0)
-		ferror("ERROR: Could not set effective capabilities");
+		ferror("Could not set effective capabilities");
 	if (cap_set_proc(caps) < 0)
-		ferror("ERROR: Could not apply capability set");
+		ferror("Could not apply capability set");
 	cap_free(caps);
 }
 
@@ -143,10 +149,10 @@ void del_cap(cap_value_t cap)
 {
 	cap_t caps = cap_get_proc();
 	if (caps == NULL)
-		ferror("ERROR: cap_get_proc failed");
+		ferror("cap_get_proc failed");
 	if (cap_set_flag(caps, CAP_EFFECTIVE, 1, &cap, CAP_CLEAR) < 0)
-		ferror("ERROR: Could not clear effective capabilities");
+		ferror("Could not clear effective capabilities");
 	if (cap_set_proc(caps) < 0)
-		ferror("ERROR: Could not apply capability set");
+		ferror("Could not apply capability set");
 	cap_free(caps);
 }

@@ -26,7 +26,7 @@ int load_only;
 
 /* module variables */
 char *modname = NULL;
-char modpath[PATH_MAX];
+char *modpath = "";
 char *modoptions[MAXMODOPTIONS];
 int initialized = 0;
 
@@ -51,9 +51,7 @@ void parse_args(int argc, char **argv)
 		case 'b':
 			buffer_size = (unsigned)atoi(optarg);
 			if (buffer_size < 1 || buffer_size > 64) {
-				fprintf(stderr,
-					"Invalid buffer size '%d' (should be 1-64).\n",
-					buffer_size);
+				err("Invalid buffer size '%d' (should be 1-64).\n", buffer_size);
 				usage(argv[0]);
 			}
 			break;
@@ -82,54 +80,50 @@ void parse_args(int argc, char **argv)
 	}
 
 	if (attach_mod && load_only) {
-		fprintf(stderr,
-			"You can't specify the '-A' and '-L' options together.\n");
+		err("You can't specify the '-A' and '-L' options together.\n");
 		usage(argv[0]);
 	}
 
 	if (attach_mod && buffer_size) {
-		fprintf(stderr,
-			"You can't specify the '-A' and '-b' options together.  The '-b'\n"
-			"buffer size option only has an effect when the module is inserted.\n");
+		err("You can't specify the '-A' and '-b' options together.  The '-b'\n"
+		    "buffer size option only has an effect when the module is inserted.\n");
 		usage(argv[0]);
 	}
 
 	if (attach_mod && target_cmd) {
-		fprintf(stderr,
-			"You can't specify the '-A' and '-c' options together.  The '-c cmd'\n"
-			"option used to start a command only has an effect when the module\n"
-			"is inserted.\n");
+		err("You can't specify the '-A' and '-c' options together.  The '-c cmd'\n"
+		    "option used to start a command only has an effect when the module\n"
+		    "is inserted.\n");
 		usage(argv[0]);
 	}
 
 	if (attach_mod && target_pid) {
-		fprintf(stderr,
-			"You can't specify the '-A' and '-x' options together.  The '-x pid'\n"
-			"option only has an effect when the module is inserted.\n");
+		err("You can't specify the '-A' and '-x' options together.  The '-x pid'\n"
+		    "option only has an effect when the module is inserted.\n");
 		usage(argv[0]);
 	}
 }
 
 void usage(char *prog)
 {
-	fprintf(stderr, "\n%s [-v]  [-c cmd ] [-x pid] [-u user]\n"
+	err("\n%s [-v]  [-c cmd ] [-x pid] [-u user]\n"
                 "\t[-A|-L] [-b bufsize] [-o FILE] MODULE [module-options]\n", prog);
-	fprintf(stderr, "-v              Increase verbosity.\n");
-	fprintf(stderr, "-c cmd          Command \'cmd\' will be run and staprun will\n");
-	fprintf(stderr, "                exit when it does.  The '_stp_target' variable\n");
-	fprintf(stderr, "                will contain the pid for the command.\n");
-	fprintf(stderr, "-x pid          Sets the '_stp_target' variable to pid.\n");
-	fprintf(stderr, "-o FILE         Send output to FILE.\n");
-	fprintf(stderr, "-b buffer size  The systemtap module specifies a buffer size.\n");
-	fprintf(stderr, "                Setting one here will override that value.  The\n");
-	fprintf(stderr, "                value should be an integer between 1 and 64\n");
-	fprintf(stderr, "                which be assumed to be the buffer size in MB.\n");
-	fprintf(stderr, "                That value will be per-cpu in bulk mode.\n");
-	fprintf(stderr, "-L              Load module and start probes, then detach.\n");
-	fprintf(stderr, "-A              Attach to loaded systemtap module.\n");
-	fprintf(stderr, "MODULE can be either a module name or a module path.  If a\n");
-	fprintf(stderr, "module name is used, it is looked for in the following\n");
-	fprintf(stderr, "directory: /lib/modules/`uname -r`/systemtap\n");
+	err("-v              Increase verbosity.\n");
+	err("-c cmd          Command \'cmd\' will be run and staprun will\n");
+	err("                exit when it does.  The '_stp_target' variable\n");
+	err("                will contain the pid for the command.\n");
+	err("-x pid          Sets the '_stp_target' variable to pid.\n");
+	err("-o FILE         Send output to FILE.\n");
+	err("-b buffer size  The systemtap module specifies a buffer size.\n");
+	err("                Setting one here will override that value.  The\n");
+	err("                value should be an integer between 1 and 64\n");
+	err("                which be assumed to be the buffer size in MB.\n");
+	err("                That value will be per-cpu in bulk mode.\n");
+	err("-L              Load module and start probes, then detach.\n");
+	err("-A              Attach to loaded systemtap module.\n");
+	err("MODULE can be either a module name or a module path.  If a\n");
+	err("module name is used, it is looked for in the following\n");
+	err("directory: /lib/modules/`uname -r`/systemtap\n");
 	exit(1);
 }
 
@@ -149,74 +143,90 @@ void usage(char *prog)
  * modpath was "foo", the full module pathname would be
  * '/lib/modules/`uname -r`/systemtap/foo.ko'.
  */
-void parse_modpath(void)
+void parse_modpath(const char *inpath)
 {
-	char *mptr = rindex(modpath, '/');
+	const char *mptr = rindex(inpath, '/');
+	char *ptr;
+
+	dbug(3, "inpath=%s\n", inpath);
 
 	/* If we couldn't find a '/', ... */
 	if (mptr == NULL) {
-		size_t plen = strlen(modpath);
+		size_t plen = strlen(inpath);
 
-		/* If the modpath ends with the '.ko' file extension,
+		/* If the path ends with the '.ko' file extension,
 		 * then we've got a module in the current
 		 * directory. */
-		if (plen > 3 && strcmp(&modpath[plen - 3], ".ko") == 0)
-			mptr = modpath;
-		/* If we didn't find the '.ko' file extension, then
-		 * we've just got a module name, not a module path.
-		 * Look for the module in /lib/modules/`uname
-		 * -r`/systemtap. */
-		else {
+		if (plen > 3 && strcmp(&inpath[plen - 3], ".ko") == 0) {
+			mptr = inpath;
+			modpath = strdup(inpath);
+			if (!modpath) {
+				err("Memory allocation failed. Exiting.\n");
+				exit(1);
+			}
+		} else {
+			/* If we didn't find the '.ko' file extension, then
+			 * we've just got a module name, not a module path.
+			 * Look for the module in /lib/modules/`uname
+			 * -r`/systemtap. */
+
 			struct utsname utsbuf;
-			char tmp_path[PATH_MAX];
+			int len;
+			#define MODULE_PATH "/lib/modules/%s/systemtap/%s.ko"
 
 			/* First, we need to figure out what the
 			 * kernel version. */
 			if (uname(&utsbuf) != 0) {
-				fprintf(stderr,
-					"ERROR: Unable to determine kernel version, uname failed: %s\n",
-					strerror(errno));
+				perr("Unable to determine kernel version, uname failed");
 				exit(-1);
 			}
 
 			/* Build the module path, which will look like
 			 * '/lib/modules/KVER/systemtap/{path}.ko'. */
-			if (sprintf_chk(tmp_path,
-					"/lib/modules/%s/systemtap/%s.ko",
-					utsbuf.release, modpath))
+			len = sizeof(MODULE_PATH) + sizeof(utsbuf.release) + strlen(inpath);
+			modpath = malloc(len);
+			if (!modpath) {
+				err("Memory allocation failed. Exiting.\n");
+				exit(1);
+			}
+			
+			if (snprintf_chk(modpath, len, MODULE_PATH, utsbuf.release, inpath))
 				exit(-1);
-			if (strcpy_chk(modpath, tmp_path))
-				exit(-1);
+
+			dbug(2, "modpath=\"%s\"\n", modpath);
 
 			mptr = rindex(modpath, '/');
 			mptr++;
 		}
-	}
-	/* We found a '/', so the module name starts with the next
-	 * character. */
-	else
+	} else {
+		/* We found a '/', so the module name starts with the next
+		 * character. */
 		mptr++;
 
-	modname = malloc(strlen(mptr) + 1);
-	if (!modname)
-		fatal("Memory allocation failed. Exiting.\n");
+		modpath = strdup(inpath);
+		if (!modpath) {
+			err("Memory allocation failed. Exiting.\n");
+			exit(1);
+		}
+	}
 
-	/* No need to check for overflow since buffer was allocated
-	 * to be the correct size. */
-	strcpy(modname, mptr);
-	
-	mptr = rindex(modname, '.');
-	if (mptr)
-		*mptr = '\0';
+	modname = strdup(mptr);
+	if (!modname) {
+		err("Memory allocation failed. Exiting.\n");
+		exit(1);
+	}
+
+	ptr = rindex(modname, '.');
+	if (ptr)
+		*ptr = '\0';
 
 	/* We've finally got a real modname.  Make sure it isn't too
 	 * long.  If it is too long, init_module() will appear to
 	 * work, but the module can't be removed (because you end up
 	 * with control characters in the module name). */
 	if (strlen(modname) > MODULE_NAME_LEN) {
-		fprintf(stderr, "ERROR: Module name ('%s') is too long.\n",
-			modname);
-		exit(-1);
+		err("ERROR: Module name ('%s') is too long.\n", modname);
+		exit(1);
 	}
 }
 

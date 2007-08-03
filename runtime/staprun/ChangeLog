@@ -1,3 +1,33 @@
+2007-08-02  Martin Hunt  <hunt@redhat.com>
+
+	* symbols.c (get_sections): Move the filter code up so that 
+	uninteresting section names are filtered out before
+	attempting to open them.
+
+	* stapio.c (main): Just call parse_modpath with argv[optind].
+	Let it allocate and set modpath and modname.
+
+	* common.c (parse_modpath): Allocate space for modpath.  
+	Use strdup to allocate modname.
+	
+	* ctl.c (init_ctl_channel): When attempting to attach, if the
+	control channel doesn't exist, print a better error message.
+	
+	* staprun.c (main): Just call parse_modpath with argv[optind].
+	Let it allocate and set modpath and modname.
+	
+	* staprun.h (err): New. print to stderr.
+	(perr): New. perror with varargs,
+	(_err): New. err with source info.
+	(_perr): New. perr with source info.
+	(fatal): Removed.
+	(ferror): Removed.
+	(overflow_error): Just call _err.
+	(strcpy_chk): Removed.
+	(modpath): Declare as a pointer instead of an array.
+
+	* ALL: Use [_][p]err macros.
+	
 2007-08-02  David Smith  <dsmith@redhat.com>
 
 	* staprun.h: Changed overflow checking strcpy/sprintf/snprintf

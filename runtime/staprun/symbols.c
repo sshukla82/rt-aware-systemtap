@@ -40,11 +40,11 @@ static int get_sections(char *name, char *data_start, int datalen)
 
 	res = snprintf(dir, sizeof(dir), SECDIR, name);
 	if (res >= (int)sizeof(dir)) {
-		fprintf(stderr, "ERROR: couldn't fit module \"%s\" into dir buffer.\n", name);
-		fprintf(stderr, "This should never happen. Please file a bug report.\n");
+		_err("Couldn't fit module \"%s\" into dir buffer.\n"	\
+		    "This should never happen. Please file a bug report.\n", name);
 		cleanup_and_exit(1);
 	}
-
+	
 	if ((secdir = opendir(dir)) == NULL)
 		return 0;
 
@@ -54,11 +54,10 @@ static int get_sections(char *name, char *data_start, int datalen)
 	/* Copy name in and check for overflow. */
 	strncpy(mod->name, name, STP_MODULE_NAME_LEN);
 	if (mod->name[STP_MODULE_NAME_LEN - 1] != '\0') {
-		fprintf(stderr, "ERROR: couldn't fit module name \"%s\" into mod->name buffer.\n", name);
-		fprintf(stderr, "This should never happen. Please file a bug report.\n");
+		_err("Couldn't fit module \"%s\" into mod->name buffer.\n" \
+		    "This should never happen. Please file a bug report.\n", name);
 		cleanup_and_exit(1);
 	}
-	
 
 	while ((d = readdir(secdir))) {
 		char *secname = d->d_name;
@@ -66,28 +65,28 @@ static int get_sections(char *name, char *data_start, int datalen)
 		/* Copy filename in and check for overflow. */
 		res = snprintf(filename, sizeof(filename), "/sys/module/%s/sections/%s", name, secname);
 		if (res >= (int)sizeof(filename)) {
-			fprintf(stderr, "ERROR: couldn't fit secname \"%s\" into filename buffer.\n", secname);
-			fprintf(stderr, "This should never happen. Please file a bug report.\n");
+			_err("Couldn't fit secname \"%s\" into filename buffer.\n" \
+			    "This should never happen. Please file a bug report.\n", secname);
 			closedir(secdir);
 			cleanup_and_exit(1);
 		}
+		
+		/* filter out some non-useful stuff */
+		if (!strncmp(secname,"__",2) 
+		    || !strcmp(secname,".") 
+		    || !strcmp(secname,"..") 
+		    || !strcmp(secname,".module_sig") 
+		    || !strcmp(secname,".modinfo") 
+		    || !strcmp(secname,".strtab") 
+		    || !strcmp(secname,".symtab") ) {
+			continue;
+		}
+		if (!strncmp(secname, ".gnu.linkonce", 13) 
+		    && strcmp(secname, ".gnu.linkonce.this_module"))
+			continue;
 
 		if ((fd = open(filename,O_RDONLY)) >= 0) {
 			if (read(fd, buf, 32) > 0) {
-
-				/* filter out some non-useful stuff */
-				if (!strncmp(secname,"__",2) 
-				    || !strcmp(secname,".module_sig") 
-				    || !strcmp(secname,".modinfo") 
-				    || !strcmp(secname,".strtab") 
-				    || !strcmp(secname,".symtab") ) {
-					close(fd);
-					continue;
-				}
-				if (!strncmp(secname, ".gnu.linkonce", 13) 
-				    && strcmp(secname, ".gnu.linkonce.this_module"))
-					continue;
-
 				/* create next section */
 				sec = (struct _stp_symbol *)data;
 				if (data - data_start + (int)sizeof(struct _stp_symbol) > datalen)
@@ -135,7 +134,7 @@ err1:
 	closedir(secdir);
 err0:
 	/* if this happens, something went seriously wrong. */
-	err("Unexpected error. Overflowed buffers.\n");
+	_err("Unexpected error. Overflowed buffers.\n");
 	cleanup_and_exit(1);
 	return 0; /* not reached */
 }
@@ -147,7 +146,7 @@ void send_module (char *mname)
 	int len = get_sections(mname, data, sizeof(data));
 	if (len) {
 		if (send_request(STP_MODULE, data, len) < 0) {
-			err("Loading of module %s failed. Exiting...\n", mname);
+			_err("Loading of module %s failed. Exiting...\n", mname);
 			cleanup_and_exit(1);
 		}
 	}
@@ -196,7 +195,7 @@ void do_kernel_symbols(void)
 	sym_base = malloc(max_syms*sizeof(struct _stp_symbol)+sizeof(long));
 	data_base = malloc(data_basesize);
 	if (data_base == NULL || sym_base == NULL) {
-		fprintf(stderr,"Failed to allocate memory for symbols\n");
+		_err("Failed to allocate memory for symbols\n");
 		goto err;
 	}
 	*(int *)data_base = STP_SYMBOLS;
@@ -208,7 +207,7 @@ void do_kernel_symbols(void)
 
 	kallsyms = fopen ("/proc/kallsyms", "r");
 	if (!kallsyms) {
-		perror("Fatal error: Unable to open /proc/kallsyms:");
+		_perr("Fatal error: Unable to open /proc/kallsyms");
 		goto err;
 	}
 
@@ -237,7 +236,7 @@ void do_kernel_symbols(void)
 				max_syms *= 2;
 				s = realloc(sym_base, max_syms*sizeof(struct _stp_symbol)+sizeof(long));
 				if (s == NULL) {
-					err("Could not allocate enough space for symbols.\n");
+					_err("Could not allocate enough space for symbols.\n");
 					goto err;
 				}
 				syms = (struct _stp_symbol *)(s + sizeof(long));
@@ -248,7 +247,7 @@ void do_kernel_symbols(void)
 				data_basesize *= 2;
 				db = realloc(data_base, data_basesize);
 				if (db == NULL) {
-					err("Could not allocate enough space for symbols.\n");
+					_err("Could not allocate enough space for symbols.\n");
 					goto err;
 				}
 				dataptr = db + (dataptr - data_base);
@@ -289,6 +288,6 @@ err:
 	if (kallsyms)
 		fclose(kallsyms);
 
-	err("Loading of symbols failed. Exiting...\n");
+	_err("Loading of symbols failed. Exiting...\n");
 	cleanup_and_exit(1);
 }

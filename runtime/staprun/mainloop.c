@@ -64,7 +64,7 @@ int send_request(int type, void *data, int len)
 
 	/* Before doing memcpy, make sure 'buf' is big enough. */
 	if ((len + 4) > (int)sizeof(buf)) {
-		err("exceeded maximum send_request size.\n");
+		_err("exceeded maximum send_request size.\n");
 		return -1;
 	}
 	memcpy(buf, &type, 4);
@@ -92,7 +92,7 @@ void start_cmd(void)
 
 	dbug (1, "execing target_cmd %s\n", target_cmd);
 	if ((pid = fork()) < 0) {
-		perror ("fork");
+		_perr("fork");
 		exit(1);
 	} else if (pid == 0) {
 		int signum;
@@ -118,10 +118,10 @@ void system_cmd(char *cmd)
 
 	dbug (2, "system %s\n", cmd);
 	if ((pid = fork()) < 0) {
-		perror ("fork");
+		_perr("fork");
 	} else if (pid == 0) {
 		if (execl("/bin/sh", "sh", "-c", cmd, NULL) < 0)
-			perror(cmd);
+			perr("%s", cmd);
 		_exit(1);
 	}
 }
@@ -134,9 +134,7 @@ static int using_old_transport(void)
 	char *start, *end;
 
 	if (uname(&utsbuf) != 0) {
-		fprintf(stderr,
-			"ERROR: Unable to determine kernel version, uname failed: %s\n",
-			strerror(errno));
+		_perr("Unable to determine kernel version, uname failed");
 		return -1;
 	}
 
@@ -145,9 +143,7 @@ static int using_old_transport(void)
 		errno = 0;
 		kver[i] = strtol(start, &end, 10);
 		if (errno != 0) {
-			fprintf(stderr,
-				"ERROR: Unable to parse kernel version, strtol failed: %s\n",
-				strerror(errno));
+			_perr("Unable to parse kernel version, strtol failed");
 			return -1;
 		}
 		start = end;
@@ -232,7 +228,7 @@ void cleanup_and_exit (int closed)
 	/* what about child processes? we will wait for them here. */
 	err = waitpid(-1, NULL, WNOHANG);
 	if (err >= 0)
-		fprintf(stderr,"\nWaiting for processes to exit\n");
+		err("\nWaiting for processes to exit\n");
 	while(wait(NULL) > 0) ;
 
 	if (use_old_transport)
@@ -244,8 +240,8 @@ void cleanup_and_exit (int closed)
 	close_ctl_channel();
 
 	if (closed == 2) {
-		fprintf(stderr, "\nDisconnecting from systemtap module.\n");
-		fprintf(stderr, "To reconnect, type \"staprun -A %s\"\n", modname);
+		err("\nDisconnecting from systemtap module.\n"		\
+		    "To reconnect, type \"staprun -A %s\"\n", modname);
 	} else if (initialized)
 		closed = 3;
 	else
@@ -273,13 +269,11 @@ int stp_main_loop(void)
 	while (1) { /* handle messages from control channel */
 		nb = read(control_channel, recvbuf, sizeof(recvbuf));
 		if (nb <= 0) {
-			if (errno != EINTR) {
-				perror("recv");
-				fprintf(stderr, "WARNING: unexpected EOF. nb=%ld\n", (long)nb);
-			}
+			if (errno != EINTR)
+				_perr("Unexpected EOF in read (nb=%ld)", (long)nb);
 			continue;
 		}
-
+		
 		type = *(int *)recvbuf;
 		data = (void *)(recvbuf + sizeof(int));
 
@@ -293,9 +287,7 @@ int stp_main_loop(void)
 				bw = write(out_fd[0], data, nb - sizeof(int));
 			}
 			if (bw != (nb - (ssize_t)sizeof(int))) {
-				perror("write");
-				fprintf(stderr,
-					"ERROR: write error. nb=%ld\n", (long)nb);
+				_perr("write error (nb=%ld)", (long)nb);
 				cleanup_and_exit(1);
 			}
                         break;
@@ -358,11 +350,11 @@ int stp_main_loop(void)
 			struct _stp_msg_symbol *req = (struct _stp_msg_symbol *)data;
 			dbug(2, "STP_SYMBOLS request received\n");
 			if (req->endian != 0x1234) {
-				fprintf(stderr,"ERROR: staprun is compiled with different endianess than the kernel!\n");
+				err("ERROR: stapio is compiled with different endianess than the kernel!\n");
 				cleanup_and_exit(1);
 			}
 			if (req->ptr_size != sizeof(char *)) {
-				fprintf(stderr,"ERROR: staprun is compiled with %d-bit pointers and the kernel uses %d-bit.\n",
+				err("ERROR: stapio is compiled with %d-bit pointers and the kernel uses %d-bit.\n",
 					8*(int)sizeof(char *), 8*req->ptr_size);
 				cleanup_and_exit(1);
 			}
@@ -370,7 +362,7 @@ int stp_main_loop(void)
 			break;
 		}
 		default:
-			fprintf(stderr, "WARNING: ignored message of type %d\n", (type));
+			err("WARNING: ignored message of type %d\n", (type));
 		}
 	}
 	fclose(ofp);

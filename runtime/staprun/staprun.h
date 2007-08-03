@@ -37,25 +37,32 @@
 
 #define DEBUG
 #ifdef DEBUG
-#define dbug(level, args...) {if (verbose>=level) {fprintf(stderr,"%s:%d ",__FUNCTION__, __LINE__); fprintf(stderr,args);}}
+#define dbug(level, args...) {if (verbose>=level) {fprintf(stderr,"%s:%s:%d ",__name__,__FUNCTION__, __LINE__); fprintf(stderr,args);}}
 #else
 #define dbug(level, args...) ;
 #endif /* DEBUG */
 
-#define err(args...) {fprintf(stderr,"%s:%d ",__FUNCTION__, __LINE__); fprintf(stderr,args); }
+extern char *__name__;
 
-#define fatal(args...) {						\
-		fprintf(stderr,"%s:%d: ",__FUNCTION__, __LINE__);	\
-		fprintf(stderr,args);					\
-		exit(1);						\
-	}								\
-		
-/* like perror, but exits */
-#define ferror(msg) {						  \
-		fprintf(stderr,"%s:%d: ",__FUNCTION__, __LINE__); \
-		perror(msg);					  \
-		exit(1);					  \
-	}							  \
+/* print to stderr */
+#define err(args...) fprintf(stderr,args)
+
+/* better perror() */
+#define perr(args...) do {					\
+		int _errno = errno;				\
+		fputs("ERROR: ", stderr);			\
+		fprintf(stderr, args);				\
+		fprintf(stderr, ": %s\n", strerror(_errno));	\
+	} while (0)
+
+/* Error messages. Use these for serious errors, not informational messages to stderr. */
+#define _err(args...) do {fprintf(stderr,"%s:%s:%d: ERROR: ",__name__, __FUNCTION__, __LINE__); fprintf(stderr,args);} while(0)
+#define _perr(args...) do {					\
+		int _errno = errno;				\
+		_err(args);					\
+		fprintf(stderr, ": %s\n", strerror(_errno));	\
+	} while (0)
+#define overflow_error() _err("Internal buffer overflow. Please file a bug report.\n")
 		
 #define do_cap(cap,func,args...) ({			\
 			int _rc, _saved_errno;		\
@@ -67,24 +74,6 @@
 			_rc;				\
 		})					\
 
-#define overflow_error() {					\
-	fprintf(stderr,						\
-		"Internal buffer overflow in %s(%s:%d)\n",	\
-		__FUNCTION__, __FILE__, __LINE__);		\
-}
-
-/* Error checking version of strcpy() - returns 1 if overflow error */
-#define strcpy_chk(dest, src) ({			\
-	int _rc;					\
-	strncpy(dest, src, sizeof(dest));		\
-	if (dest[sizeof(dest) - 1] != '\0') {		\
-		overflow_error();			\
-		_rc = 1;				\
-	}						\
-	else						\
-		_rc = 0;				\
-	_rc;						\
-})
 
 /* Error checking version of sprintf() - returns 1 if overflow error */
 #define sprintf_chk(str, args...) ({			\
@@ -158,7 +147,7 @@ int check_permissions(void);
 /* common.c functions */
 void parse_args(int argc, char **argv);
 void usage(char *prog);
-void parse_modpath(void);
+void parse_modpath(const char *);
 void setup_signals(void);
 
 /*
@@ -172,7 +161,7 @@ extern int initialized;
 extern int verbose;
 extern unsigned int buffer_size;
 extern char *modname;
-extern char modpath[PATH_MAX];
+extern char *modpath;
 #define MAXMODOPTIONS 64
 extern char *modoptions[MAXMODOPTIONS];
 extern int target_pid;

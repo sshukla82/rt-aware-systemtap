@@ -22,6 +22,7 @@
 
 #include "staprun.h"
 #include <pwd.h>
+char *__name__ = "stapio";
 
 int main(int argc, char **argv)
 {
@@ -29,28 +30,17 @@ int main(int argc, char **argv)
 	
 	parse_args(argc, argv);
 
-	if (verbose) {
-		if (buffer_size)
-			printf ("Using a buffer of %u bytes.\n", buffer_size);
-	}
+	if (buffer_size)
+		dbug(1, "Using a buffer of %u bytes.\n", buffer_size);
 
 	if (optind < argc) {
-		if (strlen(argv[optind]) > sizeof(modpath)) {
-			fprintf(stderr,
-				"ERROR: Module path '%s' is larger than buffer.\n",
-				argv[optind]);
-			exit(-1);
-		}
-		/* No need to check for overflow because of check
-		 * above. */
-		strcpy(modpath, argv[optind++]);
-		parse_modpath();
+		parse_modpath(argv[optind++]);
 		dbug(2, "modpath=\"%s\", modname=\"%s\"\n", modpath, modname);
 	}
 
         if (optind < argc) {
 		if (attach_mod) {
-			fprintf(stderr, "ERROR: Cannot have module options with attach (-A).\n");
+			err("ERROR: Cannot have module options with attach (-A).\n");
 			usage(argv[0]);
 		} else {
 			unsigned start_idx = 3; /* reserve three slots in modoptions[] */
@@ -61,7 +51,7 @@ int main(int argc, char **argv)
 	}
 
 	if (*modpath == '\0') {
-		fprintf(stderr, "ERROR: Need a module name or path to load.\n");
+		err("ERROR: Need a module name or path to load.\n");
 		usage(argv[0]);
 	}
 
@@ -71,7 +61,7 @@ int main(int argc, char **argv)
 	initialized = 1;
 
 	if (stp_main_loop()) {
-		fprintf(stderr, "ERROR: Couldn't enter main loop. Exiting.\n");
+		err("ERROR: Couldn't enter main loop. Exiting.\n");
 		exit(1);
 	}
 

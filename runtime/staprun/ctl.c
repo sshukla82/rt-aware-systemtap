@@ -33,14 +33,13 @@ static void read_buffer_info(void)
 
 	len = read(fd, buf, sizeof(buf));
 	if (len <= 0) {
-		fprintf (stderr, "ERROR: couldn't read bufsize: %s.\n",
-			 strerror(errno));
+		perr("Couldn't read bufsize");
 		close(fd);
 		return;
 	}
 	ret = sscanf(buf, "%u,%u", &n_subbufs, &subbuf_size);
 	if (ret != 2)
-		fprintf (stderr, "ERROR: couldn't read bufsize.\n");
+		perr("Couldn't read bufsize");
 
 	dbug(2, "n_subbufs= %u, size=%u\n", n_subbufs, subbuf_size);
 	close(fd);
@@ -53,23 +52,21 @@ int init_ctl_channel(void)
 	char buf[PATH_MAX];
 	struct statfs st;
 
- 	if (statfs("/sys/kernel/debug", &st) == 0
-	    && (int) st.f_type == (int) DEBUGFS_MAGIC) {
-		if (sprintf_chk(buf, "/sys/kernel/debug/systemtap/%s/cmd",
-				modname))
+ 	if (statfs("/sys/kernel/debug", &st) == 0 && (int) st.f_type == (int) DEBUGFS_MAGIC) {
+		if (sprintf_chk(buf, "/sys/kernel/debug/systemtap/%s/cmd", modname))
 			return -1;
-	}
-	else {
+	} else {
 		if (sprintf_chk(buf, "/proc/systemtap/%s/cmd", modname))
 			return -1;
 	}
-
+	
 	dbug(2, "Opening %s\n", buf); 
 	control_channel = open(buf, O_RDWR);
 	if (control_channel < 0) {
-		fprintf (stderr,
-			 "ERROR: couldn't open control channel '%s': %s\n",
-			 buf, strerror(errno));
+		if (attach_mod && errno == ENOENT)
+			err("ERROR: Can not attach. Module %s not running.\n", modname);
+		else
+			perr("Couldn't open control channel '%s'", buf);
 		return -1;
 	}
 
