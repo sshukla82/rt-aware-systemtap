@@ -239,7 +239,7 @@ void cleanup_and_exit (int closed)
 	dbug(1, "closing control channel\n");
 	close_ctl_channel();
 
-	if (closed == 2) {
+	if (initialized == 2 && closed == 2) {
 		err("\nDisconnecting from systemtap module.\n"		\
 		    "To reconnect, type \"staprun -A %s\"\n", modname);
 	} else if (initialized)
@@ -334,6 +334,7 @@ int stp_main_loop(void)
 					cleanup_and_exit(1);
 			}
 			ts.target = target_pid;
+			initialized = 2;
 			send_request(STP_START, &ts, sizeof(ts));
 			if (load_only)
 				cleanup_and_exit(2);

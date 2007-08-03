@@ -1,3 +1,10 @@
+2007-08-03  Martin Hunt  <hunt@redhat.com>
+
+	* mainloop.c (cleanup_and_exit): Make sure initialized is 2
+	before exiting with code 2.
+	(stp_main_loop): Set initialized to 2 when STP_TRANSPORT
+	is received.
+
 2007-08-03  David Smith  <dsmith@redhat.com>
 
 	* staprun_funcs.c (insert_module): Make sure _perr is printing the
