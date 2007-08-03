@@ -1,3 +1,9 @@
+2007-08-03  Martin Hunt  <hunt@redhat.com>
+
+	* control.c (_stp_ctl_open_cmd): Do not allow multiple opens of
+	the control file.
+	* procfs.c (_stp_ctl_open_cmd): Ditto.	
+
 2007-07-25  Martin Hunt  <hunt@redhat.com>
 
 	* control.c (_stp_ctl_write_cmd): Once STP_START is received,

@@ -221,17 +221,23 @@ _stp_ctl_read_cmd (struct file *file, char __user *buf, size_t count, loff_t *pp
 	return len;
 }
 
+static int _stp_ctl_opens = 0;
 static int _stp_ctl_open_cmd (struct inode *inode, struct file *file)
 {
+	if (_stp_ctl_opens)
+		return -1;
+
+	_stp_ctl_opens++;
 	_stp_pid = current->pid;
 	return 0;
 }
 
 static int _stp_ctl_close_cmd (struct inode *inode, struct file *file)
 {
+	if (_stp_ctl_opens)
+		_stp_ctl_opens--;
 	_stp_pid = 0;
 	return 0;
-
 }
 
 static struct file_operations _stp_ctl_fops_cmd = {
