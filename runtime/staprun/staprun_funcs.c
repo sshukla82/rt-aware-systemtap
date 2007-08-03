@@ -85,17 +85,17 @@ int insert_module(void)
 	
 	/* Now that the file is open, figure out how big it is. */
 	if (fstat(fd, &sbuf) < 0) {
-		close(fd);
 		_perr("Error stat'ing '%s'", modpath);
+		close(fd);
 		return -1;
 	}
 
 	/* mmap in the entire module. */
 	file = mmap(NULL, sbuf.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
 	if (file == MAP_FAILED) {
+		_perr("Error mapping '%s'", modpath);
 		close(fd);
 		free(opts);
-		_perr("Error mapping '%s'", modpath);
 		return -1;
 	}
 	    

@@ -1,3 +1,11 @@
+2007-08-03  David Smith  <dsmith@redhat.com>
+
+	* staprun_funcs.c (insert_module): Make sure _perr is printing the
+	correct error.
+
+	* stapio.c (main): Check modpath for NULL before looking into it.
+	* staprun.c (main): Ditto.
+
 2007-08-02  Martin Hunt  <hunt@redhat.com>
 
 	* symbols.c (get_sections): Move the filter code up so that 

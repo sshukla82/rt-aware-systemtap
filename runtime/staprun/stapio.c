@@ -50,7 +50,7 @@ int main(int argc, char **argv)
 		}
 	}
 
-	if (*modpath == '\0') {
+	if (modpath == NULL || *modpath == '\0') {
 		err("ERROR: Need a module name or path to load.\n");
 		usage(argv[0]);
 	}
