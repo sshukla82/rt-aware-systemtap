@@ -97,6 +97,9 @@ int init_staprun(void)
 	if (mountfs() < 0)
 		return -1;
 
+	/* We're done with CAP_SYS_ADMIN. */
+	drop_cap(CAP_SYS_ADMIN);
+ 
 	if (!attach_mod) {
 		if (insert_module() < 0)
 			return -1;
@@ -197,6 +200,9 @@ int main(int argc, char **argv)
 	/* failure is not fatal in this case */
 	if (rc < 0)
 		_perr("setpriority");
+
+	/* We're done with CAP_SYS_NICE. */
+	drop_cap(CAP_SYS_NICE);
 
 	if (init_staprun())
 		exit(1);
