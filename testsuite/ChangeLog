@@ -1,3 +1,8 @@
+2007-08-09  David Smith  <dsmith@redhat.com>
+
+	* configure.ac: Version increase to 0.6.
+	* configure: Regenerated.
+
 2007-08-01  David Smith  <dsmith@redhat.com>
 
 	* parseko/cmdline09.stp: Added new test for staprun command line
