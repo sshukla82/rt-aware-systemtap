@@ -1,3 +1,14 @@
+2007-08-09  David Smith  <dsmith@redhat.com>
+
+	* configure.ac: Version increase to 0.6.
+	* configure: Regenerated.
+
+	* systemtap.spec.in: Version increase to 0.6-1.
+
+	* NEWS: Added info on new security model.
+
+	* README.security: New file.
+
 2007-07-31  David Smith  <dsmith@redhat.com>
 
 	* main.cxx (main): Make sure module name isn't too long.

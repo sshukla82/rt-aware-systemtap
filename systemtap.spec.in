@@ -1,5 +1,5 @@
 # Release number for rpm build.  Stays at 1 for new PACKAGE_VERSION increases.
-%define release 2
+%define release 1
 # Version number of oldest elfutils release that works with systemtap.
 %define elfutils_version 0.127
 
@@ -180,6 +180,9 @@ fi
 %doc README AUTHORS NEWS COPYING
 
 %changelog
+* Thu Aug  9 2007 David Smith <dsmith@redhat.com> - 0.6-1
+- Bumped version, added libcap-devel BuildRequires.
+
 * Wed Jul 11 2007 Will Cohen <wcohen@redhat.com> - 0.5.14-2
 - Fix Requires and BuildRequires for sqlite.
 
