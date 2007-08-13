@@ -1,3 +1,9 @@
+2007-08-13  Martin Hunt  <hunt@redhat.com>
+
+	* Makefile.am (staprun_SOURCES): Add ctl.c and symbols.c
+	(stapio_SOURCES): Remove symbols.c.
+	* Makefile.in: Rebuilt.
+
 2007-08-09  David Smith  <dsmith@redhat.com>
 
 	* configure.ac: Version increase to 0.6.

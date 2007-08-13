@@ -52,7 +52,8 @@ install-exec-local: install-elfutils
 endif
 
 staprun_SOURCES = runtime/staprun/staprun.c runtime/staprun/staprun_funcs.c\
-	runtime/staprun/common.c runtime/staprun/cap.c
+	runtime/staprun/ctl.c runtime/staprun/common.c \
+	runtime/staprun/cap.c runtime/staprun/symbols.c
 
 staprun_CPPFLAGS = $(AM_CPPFLAGS) -DSINGLE_THREADED
 staprun_CFLAGS = @PROCFLAGS@ $(AM_CFLAGS)
@@ -60,7 +61,7 @@ staprun_LDADD = @PROCFLAGS@ -lcap
 
 stapio_SOURCES = runtime/staprun/stapio.c \
 	runtime/staprun/mainloop.c runtime/staprun/common.c \
-	runtime/staprun/symbols.c runtime/staprun/ctl.c \
+	runtime/staprun/ctl.c \
 	runtime/staprun/relay.c runtime/staprun/relay_old.c 
 
 stapio_CFLAGS = @PROCFLAGS@ $(AM_CFLAGS)
