@@ -223,7 +223,7 @@ int _stp_transport_init(void)
 	int ret;
 
 	kbug("transport_init\n");
-	
+	_stp_init_pid = current->pid;
 	_stp_uid = current->uid;
 	_stp_gid = current->gid;
 

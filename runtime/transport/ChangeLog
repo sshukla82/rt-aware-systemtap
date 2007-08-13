@@ -1,3 +1,14 @@
+2007-08-13  Martin Hunt  <hunt@redhat.com>
+
+	* transport.c (_stp_transport_init): Set _stp_init_pid.
+	* transport.h: Declare _stp_init_pid.
+
+	* control.c (_stp_ctl_write_cmd): Create another state 
+	variable "initialized". Don't respond to STP_SYMBOLS or
+	STP_MODULES unless initialized is 0. Also check that current
+	pid is the same as the pid that did insmod.
+	* procfs.c (_stp_ctl_write_cmd): Ditto.
+	
 2007-08-03  David Smith  <dsmith@redhat.com>
 
 	* control.c (_stp_ctl_write): Make sure we don't overflow. 

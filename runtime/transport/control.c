@@ -21,7 +21,7 @@ static ssize_t _stp_ctl_write_cmd (struct file *file, const char __user *buf,
 				    size_t count, loff_t *ppos)
 {
 	int type;
-	static int started = 0;
+	static int started = 0, initialized = 0;
 
 	if (count < sizeof(int))
 		return 0;
@@ -55,12 +55,16 @@ static ssize_t _stp_ctl_write_cmd (struct file *file, const char __user *buf,
 	}
 
 	case STP_SYMBOLS:
-		if (started == 0)
+		if (initialized == 0 && count && current->pid == _stp_init_pid)
 			count = _stp_do_symbols(buf, count);
 		break;
 	case STP_MODULE:
-		if (started == 0)
-			count = _stp_do_module(buf, count);
+		if (initialized == 0 && current->pid == _stp_init_pid) {
+			if (count)
+				count = _stp_do_module(buf, count);
+			else
+				initialized = 1;
+		}
 		break;
 	case STP_EXIT:
 		_stp_exit_flag = 1;
