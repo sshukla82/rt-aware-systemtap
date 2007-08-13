@@ -12,41 +12,6 @@
 
 #include "staprun.h"
 
-/* This is only used in the old relayfs code */
-static void read_buffer_info(void)
-{
-	char buf[PATH_MAX];
-	struct statfs st;
-	int fd, len, ret;
-
-	if (!use_old_transport)
-		return;
-
- 	if (statfs("/sys/kernel/debug", &st) == 0 && (int) st.f_type == (int) DEBUGFS_MAGIC)
-		return;
-
-	if (sprintf_chk(buf, "/proc/systemtap/%s/bufsize", modname))
-		return;
-	fd = open(buf, O_RDONLY);
-	if (fd < 0)
-		return;
-
-	len = read(fd, buf, sizeof(buf));
-	if (len <= 0) {
-		perr("Couldn't read bufsize");
-		close(fd);
-		return;
-	}
-	ret = sscanf(buf, "%u,%u", &n_subbufs, &subbuf_size);
-	if (ret != 2)
-		perr("Couldn't read bufsize");
-
-	dbug(2, "n_subbufs= %u, size=%u\n", n_subbufs, subbuf_size);
-	close(fd);
-	return;
-}
-
-
 int init_ctl_channel(void)
 {
 	char buf[PATH_MAX];
@@ -69,8 +34,6 @@ int init_ctl_channel(void)
 			perr("Couldn't open control channel '%s'", buf);
 		return -1;
 	}
-
-	read_buffer_info();
 	return 0;
 }
 

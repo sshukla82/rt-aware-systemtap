@@ -383,3 +383,61 @@ int check_permissions(void)
 	 * is in that directory. */
 	return check_path();
 }
+
+/* wait for symbol requests and reply */
+void handle_symbols(void)
+{
+	ssize_t nb;
+	void *data;
+	int type;
+	char recvbuf[8192];
+
+	dbug(2, "waiting for symbol requests\n");
+
+	/* create control channel */
+	if (init_ctl_channel() < 0) {
+		err("Failed to initialize control channel.\n");
+		exit(1);
+	}
+
+	while (1) { /* handle messages from control channel */
+		nb = read(control_channel, recvbuf, sizeof(recvbuf));
+		if (nb <= 0) {
+			if (errno != EINTR)
+				_perr("Unexpected EOF in read (nb=%ld)", (long)nb);
+			continue;
+		}
+		
+		type = *(int *)recvbuf;
+		data = (void *)(recvbuf + sizeof(int));
+
+		switch (type) { 
+		case STP_MODULE:
+		{
+			dbug(2, "STP_MODULES request received\n");
+			do_module(data);
+			goto done;
+		}		
+		case STP_SYMBOLS:
+		{
+			struct _stp_msg_symbol *req = (struct _stp_msg_symbol *)data;
+			dbug(2, "STP_SYMBOLS request received\n");
+			if (req->endian != 0x1234) {
+				err("ERROR: staprun is compiled with different endianess than the kernel!\n");
+				exit(1);
+			}
+			if (req->ptr_size != sizeof(char *)) {
+				err("ERROR: staprun is compiled with %d-bit pointers and the kernel uses %d-bit.\n",
+					8*(int)sizeof(char *), 8*req->ptr_size);
+				exit(1);
+			}
+			do_kernel_symbols();
+			break;
+		}
+		default:
+			err("WARNING: ignored message of type %d\n", (type));
+		}
+	}
+done:
+	close_ctl_channel();
+}

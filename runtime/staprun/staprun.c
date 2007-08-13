@@ -208,6 +208,8 @@ int main(int argc, char **argv)
 		exit(1);
 
 	setup_staprun_signals();
+	if (!attach_mod)
+		handle_symbols();
 
 	rc = run_stapio(argv);
 	cleanup(rc);

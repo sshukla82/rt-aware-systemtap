@@ -144,6 +144,8 @@ const char *moderror(int err);
 int insert_module(void);
 int mountfs(void);
 int check_permissions(void);
+void handle_symbols(void);
+
 /* common.c functions */
 void parse_args(int argc, char **argv);
 void usage(char *prog);

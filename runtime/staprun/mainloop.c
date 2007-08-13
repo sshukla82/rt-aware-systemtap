@@ -14,7 +14,6 @@
 #include <sys/utsname.h>
 
 /* globals */
-int control_channel = 0;
 int ncpus;
 int use_old_transport = 0;
 
@@ -50,27 +49,6 @@ static void setup_main_signals(int cleanup)
 	sigaction(SIGQUIT, &a, NULL);
 }
 
-/**
- *	send_request - send request to kernel over control channel
- *	@type: the relay-app command id
- *	@data: pointer to the data to be sent
- *	@len: length of the data to be sent
- *
- *	Returns 0 on success, negative otherwise.
- */
-int send_request(int type, void *data, int len)
-{
-	char buf[1024];
-
-	/* Before doing memcpy, make sure 'buf' is big enough. */
-	if ((len + 4) > (int)sizeof(buf)) {
-		_err("exceeded maximum send_request size.\n");
-		return -1;
-	}
-	memcpy(buf, &type, 4);
-	memcpy(&buf[4], data, len);
-	return write(control_channel, buf, len+4);
-}
 
 /* 
  * start_cmd forks the command given on the command line
@@ -158,6 +136,41 @@ static int using_old_transport(void)
 	return 0;
 }
 
+/* This is only used in the old relayfs code */
+static void read_buffer_info(void)
+{
+	char buf[PATH_MAX];
+	struct statfs st;
+	int fd, len, ret;
+
+	if (!use_old_transport)
+		return;
+
+ 	if (statfs("/sys/kernel/debug", &st) == 0 && (int) st.f_type == (int) DEBUGFS_MAGIC)
+		return;
+
+	if (sprintf_chk(buf, "/proc/systemtap/%s/bufsize", modname))
+		return;
+	fd = open(buf, O_RDONLY);
+	if (fd < 0)
+		return;
+
+	len = read(fd, buf, sizeof(buf));
+	if (len <= 0) {
+		perr("Couldn't read bufsize");
+		close(fd);
+		return;
+	}
+	ret = sscanf(buf, "%u,%u", &n_subbufs, &subbuf_size);
+	if (ret != 2)
+		perr("Couldn't read bufsize");
+
+	dbug(2, "n_subbufs= %u, size=%u\n", n_subbufs, subbuf_size);
+	close(fd);
+	return;
+}
+
+
 /**
  *	init_stapio - initialize the app
  *	@print_summary: boolean, print summary or not at end of run
@@ -172,12 +185,15 @@ int init_stapio(void)
 	if (use_old_transport < 0)
 		return -1;
 
+	/* create control channel */
+	if (init_ctl_channel() < 0) {
+		err("Failed to initialize control channel.\n");
+		return -1;
+	}
+	read_buffer_info();
+
 	if (attach_mod) {
 		dbug(2, "Attaching\n");
-		if (init_ctl_channel() < 0) {
-			dbug(2, "Failed to initialize control channel.\n");
-			return -1;
-		}
 		if (use_old_transport) {
 			if (init_oldrelayfs() < 0) {
 				close_ctl_channel();
@@ -190,12 +206,6 @@ int init_stapio(void)
 			}
 		}
 		return 0;
-	}
-
-	/* create control channel */
-	if (init_ctl_channel() < 0) {
-		err("Failed to initialize control channel.\n");
-		return -1;
 	}
 
 	/* fork target_cmd if requested. */
@@ -338,28 +348,6 @@ int stp_main_loop(void)
 			send_request(STP_START, &ts, sizeof(ts));
 			if (load_only)
 				cleanup_and_exit(2);
-			break;
-		}
-		case STP_MODULE:
-		{
-			dbug(2, "STP_MODULES request received\n");
-			do_module(data);
-			break;
-		}		
-		case STP_SYMBOLS:
-		{
-			struct _stp_msg_symbol *req = (struct _stp_msg_symbol *)data;
-			dbug(2, "STP_SYMBOLS request received\n");
-			if (req->endian != 0x1234) {
-				err("ERROR: stapio is compiled with different endianess than the kernel!\n");
-				cleanup_and_exit(1);
-			}
-			if (req->ptr_size != sizeof(char *)) {
-				err("ERROR: stapio is compiled with %d-bit pointers and the kernel uses %d-bit.\n",
-					8*(int)sizeof(char *), 8*req->ptr_size);
-				cleanup_and_exit(1);
-			}
-			do_kernel_symbols();
 			break;
 		}
 		default:
