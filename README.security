@@ -112,11 +112,3 @@ program was designed this way to prevent several classes of security
 attacks. Security is also heightened by the fact that the only
 external program that staprun executes is stapio.
 
-The biggest known security problem still remaining in staprun/stapio
-is that a race condition exists.  It would be possible (although not
-easy) for a user to write their own stapio clone and arrange for it to
-attach to a newly loaded module before the real stapio had a chance to
-run.  The stapio clone program could then feed bad symbolic
-information to the module, resulting in probes being placed in the
-wrong locations.  Further work needs to be done in this area to move
-all security sensitive communication to staprun from stapio.

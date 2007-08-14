@@ -1,3 +1,8 @@
+2007-08-14  Martin Hunt  <hunt@redhat.com>
+
+	* README.security: Removed part about possible race. 
+	It has been fixed
+
 2007-08-13  Martin Hunt  <hunt@redhat.com>
 
 	* Makefile.am (staprun_SOURCES): Add ctl.c and symbols.c
