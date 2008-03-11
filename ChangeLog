@@ -1,10 +1,19 @@
 2008-03-11  David Smith  <dsmith@redhat.com>
 
 	* tapsets.cxx (utrace_derived_probe_group::emit_module_decls):
+	Added output of report functions.  Added
+	stap_start_utrace_task_finder() function which attaches to all
+	tasks (that should be attached to).
+	(utrace_derived_probe_group::emit_module_init): Just calls
+	stap_start_utrace_task_finder() instead of having the code
+	inline.
+	
+	* tapsets.cxx (utrace_derived_probe_group::emit_module_decls):
 	Added detach_utrace_probes() routine output.
-	(utrace_derived_probe_group::emit_module_decls): Added error
+	(utrace_derived_probe_group::emit_module_init): Added error
 	handling.
 	(utrace_derived_probe_group::emit_module_exit): Added cleanup.
+	
 
 2008-03-07  David Smith  <dsmith@redhat.com>
 

@@ -4453,7 +4453,49 @@ utrace_derived_probe_group::emit_module_decls (systemtap_session& s)
   s.op->newline() << "#include <linux/utrace.h>";
   s.op->newline();
 
-  s.op->newline() << "const struct utrace_engine_ops stap_utrace_ops /*= {}*/;";
+  s.op->newline() << "#define STAP_UTRACE_TASK_FINDER_EVENTS (UTRACE_EVENT(CLONE) | UTRACE_EVENT(EXEC) | UTRACE_EVENT(DEATH))";
+
+  // On clone, attach to the child.
+  s.op->newline() << "static u32 stap_utrace_task_finder_clone(struct utrace_attached_engine *engine,";
+  s.op->newline(2) << "struct task_struct *parent, unsigned long clone_flags,";
+  s.op->newline() << "struct task_struct *child) {";
+  s.op->newline(-1) << "struct utrace_attached_engine *child_engine;";
+  s.op->newline() << "child_engine = utrace_attach(child, UTRACE_ATTACH_CREATE, engine->ops, 0);";
+  s.op->newline() << "if (IS_ERR(child_engine))";
+  s.op->newline(1) << "_stp_error(\"attach to clone child %d (%lx) from 0x%p failed: %ld\", (int)child->pid, clone_flags, engine, PTR_ERR(child_engine));";
+  s.op->newline(-1) << "else {";
+  s.op->newline(1) << "utrace_set_flags(child, child_engine, STAP_UTRACE_TASK_FINDER_EVENTS);";
+  s.op->newline() << "_stp_dbug(__FUNCTION__, __LINE__, \"attach to clone child %d (%lx) from 0x%p\", (int)child->pid, clone_flags, engine);";
+  s.op->newline(-1) << "}";
+  s.op->newline() << "return UTRACE_ACTION_RESUME;";
+  s.op->newline(-1) << "}";
+
+  // On exec, check bprm
+  s.op->newline() << "static u32 stap_utrace_task_finder_exec(struct utrace_attached_engine *engine,";
+  s.op->newline(2) << "struct task_struct *tsk, const struct linux_binprm *bprm,";
+  s.op->newline() << "struct pt_regs *regs) {";
+  s.op->indent(-1);
+  // FIXME: for now, just return
+  s.op->newline() << "_stp_dbug(__FUNCTION__, __LINE__, \"exec from pid %d\", (int)tsk->pid);";
+  s.op->newline() << "return UTRACE_ACTION_RESUME;";
+  s.op->newline(-1) << "}";
+
+  // On death, detach
+  // FIXME: needed?
+  s.op->newline() << "static u32 stap_utrace_task_finder_death(struct utrace_attached_engine *engine, struct task_struct *tsk) {";
+  s.op->newline(1) << "_stp_dbug(__FUNCTION__, __LINE__, \"pid %d death\", (int)tsk->pid);";
+  s.op->newline() << "return UTRACE_ACTION_DETACH;";
+  s.op->newline(-1) << "}";
+
+  s.op->newline() << "const struct utrace_engine_ops stap_utrace_task_finder_ops = {";
+  s.op->indent(1);
+  s.op->newline() << ".report_clone = stap_utrace_task_finder_clone,";
+  // need .report_vfork_done?
+  s.op->newline() << ".report_exec = stap_utrace_task_finder_exec,";
+  // need .report_exit/.report_death?
+  s.op->newline() << ".report_death = stap_utrace_task_finder_death,";
+  s.op->newline(-1) << "};";
+
   s.op->newline() << "struct stap_utrace_probe {";
   s.op->indent(1);
 //  s.op->newline(1) << "union { struct uprobe up; struct uretprobe urp; };";
@@ -4482,22 +4524,61 @@ utrace_derived_probe_group::emit_module_decls (systemtap_session& s)
   s.op->newline(-1) << "};";
 
   s.op->newline();
-  s.op->newline() << "void detach_utrace_probes (void) {";
-  s.op->newline(1) << "struct task_struct *t;";
+  s.op->newline() << "int stap_start_utrace_task_finder (void) {";
+  s.op->newline(1) << "int rc = 0;";
+  s.op->newline() << "struct task_struct *t;";
   s.op->newline() << "struct utrace_attached_engine *engine;";
   s.op->newline() << "rcu_read_lock();";
   s.op->newline() << "for_each_process(t) {";
-  s.op->newline(1) << "engine = utrace_attach(t, UTRACE_ATTACH_MATCH_OPS, &stap_utrace_ops, 0);";
+  s.op->indent(1);
+  s.op->newline() << "int task_has_mm = 0;";
+  s.op->newline() << "task_lock(t);";
+  s.op->newline() << "if (t->mm)";
+  s.op->newline(1) << "task_has_mm = 1;";
+  s.op->newline(-1) << "task_unlock(t);";
+  s.op->newline() << "if (! task_has_mm) {";
+  s.op->newline(1) << "_stp_dbug(__FUNCTION__, __LINE__, \"skipping pid %d\", t->pid);";
+  s.op->newline() << "continue;";
+  s.op->newline(-1) << "}";
+  s.op->newline() << "engine = utrace_attach(t, UTRACE_ATTACH_CREATE, &stap_utrace_task_finder_ops, 0);";
   s.op->newline() << "if (IS_ERR(engine)) {";
   s.op->newline(1) << "int error = -PTR_ERR(engine);";
-  s.op->newline() << "if (error != ENOENT)";
-  s.op->newline(1) << "_stp_error(\"utrace_attach returned error %d on pid %d\", error, t->pid);";
-  s.op->newline(-2) << "}";
+  s.op->newline() << "if (error != ENOENT) {";
+  s.op->newline(1) << "_stp_error(\"utrace_attach returned error %d on pid %d\", error, (int)t->pid);";
+  s.op->newline() << "rc = error;";
+  s.op->newline(-1) << "}";
+  s.op->newline(-1) << "}";
+  s.op->newline() << "else if (unlikely(engine == NULL)) {";
+  s.op->newline(1) << "_stp_error(\"utrace_attach returned NULL!\");";
+  s.op->newline() << "rc = -EFAULT;";
+  s.op->newline(-1) << "}";
   s.op->newline() << "else";
-  s.op->newline(1) << "utrace_detach(t, engine);";
+  s.op->newline(1) << "utrace_set_flags(t, engine, STAP_UTRACE_TASK_FINDER_EVENTS);";
   s.op->indent(-1);
   s.op->newline(-1) << "}";
   s.op->newline() << "rcu_read_unlock();";
+  s.op->newline() << "return rc;";
+  s.op->newline(-1) << "}";
+
+  s.op->newline() << "void stap_stop_utrace_task_finder (void) {";
+  s.op->newline(1) << "struct task_struct *t;";
+  s.op->newline() << "struct utrace_attached_engine *engine;";
+  s.op->newline() << "_stp_dbug(__FUNCTION__, __LINE__, \"enter\");";
+  s.op->newline() << "rcu_read_lock();";
+  s.op->newline() << "for_each_process(t) {";
+  s.op->newline(1) << "engine = utrace_attach(t, UTRACE_ATTACH_MATCH_OPS, &stap_utrace_task_finder_ops, 0);";
+  s.op->newline() << "if (IS_ERR(engine)) {";
+  s.op->newline(1) << "int error = -PTR_ERR(engine);";
+  s.op->newline() << "if (error != ENOENT)";
+  s.op->newline(1) << "_stp_error(\"utrace_attach returned error %d on pid %d\", error, (int)t->pid);";
+  s.op->newline(-2) << "}";
+  s.op->newline() << "else if (engine != NULL) {";
+  s.op->newline(1) << "utrace_detach(t, engine);";
+  s.op->newline() << "_stp_dbug(__FUNCTION__, __LINE__, \"detached from pid %d\", (int)t->pid);";
+  s.op->newline(-1) << "}";
+  s.op->newline(-1) << "}";
+  s.op->newline() << "rcu_read_unlock();";
+  s.op->newline() << "_stp_dbug(__FUNCTION__, __LINE__, \"exit\");";
   s.op->newline(-1) << "}";
 
 #if 0
@@ -4532,6 +4613,7 @@ utrace_derived_probe_group::emit_module_init (systemtap_session& s)
   s.op->newline();
   s.op->newline() << "/* ---- utrace probes ---- */";
 
+#if 0
   s.op->newline() << "for (i=0; i<" << probes.size() << "; i++) {";
   s.op->newline(1) << "struct stap_utrace_probe *sup = &stap_utrace_probes[i];";
   s.op->newline() << "struct utrace_attached_engine *engine;";
@@ -4545,11 +4627,11 @@ utrace_derived_probe_group::emit_module_init (systemtap_session& s)
   s.op->newline(-1) << "rcu_read_unlock();";
 
   s.op->newline() << "if (sup->target_tsk == NULL) {";
-  s.op->newline(1) << "_stp_error (\"probe %s: cannot find PID %d\", probe_point, sup->target_pid);";
+  s.op->newline(1) << "_stp_error (\"probe %s: cannot find PID %d\", probe_point, (int)sup->target_pid);";
   s.op->newline() << "rc = -ESRCH;"; 
   s.op->newline(-1) << "}";
   s.op->newline() << "else {";
-  s.op->newline(1) << "engine = utrace_attach(sup->target_tsk, UTRACE_ATTACH_CREATE, &stap_utrace_ops, 0);";
+  s.op->newline(1) << "engine = utrace_attach(sup->target_tsk, UTRACE_ATTACH_CREATE, &stap_utrace_task_finder_ops, 0);";
   s.op->newline() << "if (IS_ERR(engine)) {";
   s.op->newline(1) << "_stp_error(\"probe %s: utrace_attach failed: %ld\", probe_point, PTR_ERR(engine));";
   s.op->newline() << "rc = PTR_ERR(engine);";
@@ -4558,19 +4640,29 @@ utrace_derived_probe_group::emit_module_init (systemtap_session& s)
   s.op->newline(1) << "_stp_error(\"probe %s: utrace_attach returned NULL!\", probe_point);";
   s.op->newline() << "rc = -EFAULT;";
   s.op->newline(-1) << "}";
-  s.op->newline() << "else";
+  s.op->newline() << "else {";
   s.op->newline(1) << "sup->registered_p = 1;";
-  s.op->indent(-1);
+  s.op->newline() << "utrace_set_flags(sup->target_tsk, engine, STAP_UTRACE_TASK_FINDER_EVENTS);";
   s.op->newline(-1) << "}";
+  // this is probably wrong...
+  s.op->newline () << "WARN_ON(atomic_dec_and_test(&sup->target_tsk->usage));";
+  s.op->newline(-1) << "}";
+#else
+  s.op->newline() << "rc = stap_start_utrace_task_finder();";
+#endif
 
   // rollback all utrace probes
   s.op->newline() << "if (rc) {";
-  s.op->newline(1) << "detach_utrace_probes();";
+  s.op->newline(1) << "stap_stop_utrace_task_finder();";
   // NB: we don't have to clear sup2->registered_p, since the
   // module_exit code is not run for this early-abort case.
+#if 0
   s.op->newline() << "break;"; // don't attempt to register any more probes
+#endif
   s.op->newline(-1) << "}";
+#if 0
   s.op->newline(-1) << "}";
+#endif
 }
 
 
@@ -4581,7 +4673,7 @@ utrace_derived_probe_group::emit_module_exit (systemtap_session& s)
 
   s.op->newline();
   s.op->newline() << "/* ---- utrace probes ---- */";
-  s.op->newline() << "detach_utrace_probes();";
+  s.op->newline() << "stap_stop_utrace_task_finder();";
 }
 
 
