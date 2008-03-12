@@ -1,3 +1,11 @@
+2008-03-12  David Smith  <dsmith@redhat.com>
+
+	* tapsets.cxx (struct utrace_derived_probe): Added start of
+	'process(PID)' support.
+	(struct utrace_derived_probe_group): Added custom enroll()
+	function to keep probes by path and pid.
+	(utrace_derived_probe_group::enroll): Added.
+
 2008-03-11  David Smith  <dsmith@redhat.com>
 
 	* tapsets.cxx (utrace_derived_probe_group::emit_module_decls):
