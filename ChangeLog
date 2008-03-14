@@ -1,3 +1,9 @@
+2008-03-14  David Smith  <dsmith@redhat.com>
+
+	* tapsets.cxx (utrace_derived_probe_group::emit_module_decls):
+	Actually registers utrace probes (for new processes).
+	(utrace_derived_probe_group::emit_module_exit): Better cleanup.
+
 2008-03-12  David Smith  <dsmith@redhat.com>
 
 	* tapsets.cxx (struct utrace_derived_probe): Added start of
