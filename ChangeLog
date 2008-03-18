@@ -1,3 +1,10 @@
+2008-03-18  David Smith  <dsmith@redhat.com>
+
+	* tapsets.cxx (utrace_derived_probe_group::emit_module_decls):
+	Added output of stap_utrace_get_mm_path() function, which returns
+	the pathname related to a mm_struct.  This is used when looping
+	through existing processes.
+
 2008-03-14  David Smith  <dsmith@redhat.com>
 
 	* tapsets.cxx (utrace_derived_probe_group::emit_module_decls):

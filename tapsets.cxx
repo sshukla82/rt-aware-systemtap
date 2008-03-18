@@ -4475,6 +4475,8 @@ utrace_derived_probe_group::emit_module_decls (systemtap_session& s)
   s.op->newline() << "#error \"Need CONFIG_UTRACE!\"";
   s.op->newline() << "#endif";
   s.op->newline() << "#include <linux/utrace.h>";
+  s.op->newline() << "#include <linux/mount.h>";
+  s.op->newline() << "#include \"utrace.c\"";
   s.op->newline();
 
   s.op->newline() << "struct stap_utrace_probe {";
@@ -4669,7 +4671,30 @@ utrace_derived_probe_group::emit_module_decls (systemtap_session& s)
 #endif
 
   s.op->newline();
-  s.op->newline() << "int stap_start_utrace_task_finder (void) {";
+  s.op->newline() << "static inline char *stap_utrace_get_mm_path(struct mm_struct *mm, char *buf, int buflen) {";
+  s.op->indent(1);
+  s.op->newline() << "struct vm_area_struct *vma;";
+  s.op->newline() << "char *rc = NULL;";
+  s.op->newline() << "down_read(&mm->mmap_sem);";
+  s.op->newline() << "vma = mm->mmap;";
+  s.op->newline() << "while (vma) {";
+  s.op->newline(1) << "if ((vma->vm_flags & VM_EXECUTABLE) && vma->vm_file)";
+  s.op->newline(1) << "break;";
+  s.op->newline(-1) << "vma = vma->vm_next;";
+  s.op->newline(-1) << "}";
+  s.op->newline() << "if (vma) {";
+  s.op->indent(1);
+  s.op->newline() << "struct vfsmount *mnt = mntget(vma->vm_file->f_path.mnt);";
+  s.op->newline() << "struct dentry *dentry = dget(vma->vm_file->f_path.dentry);";
+  s.op->newline() << "rc = d_path(dentry, mnt, buf, buflen);";
+  s.op->newline() << "dput(dentry);";
+  s.op->newline() << "mntput(mnt);";
+  s.op->newline(-1) << "}";
+  s.op->newline() << "up_read(&mm->mmap_sem);";
+  s.op->newline() << "return rc;";
+  s.op->newline(-1) << "}";
+
+  s.op->newline() << "int stap_utrace_start_task_finder (void) {";
   s.op->newline(1) << "int rc = 0;";
   s.op->newline() << "struct task_struct *t;";
   s.op->newline() << "struct utrace_attached_engine *engine;";
@@ -4677,12 +4702,11 @@ utrace_derived_probe_group::emit_module_decls (systemtap_session& s)
   s.op->newline() << "for_each_process(t) {";
   s.op->indent(1);
   // We want to ignore tasks without a memory map - those are kernel tasks.
-  s.op->newline() << "int task_has_mm = 0;";
+  s.op->newline() << "struct mm_struct *mm = NULL;";
   s.op->newline() << "task_lock(t);";
-  s.op->newline() << "if (t->mm)";
-  s.op->newline(1) << "task_has_mm = 1;";
-  s.op->newline(-1) << "task_unlock(t);";
-  s.op->newline() << "if (! task_has_mm) {";
+  s.op->newline() << "mm = get_task_mm(t);";
+  s.op->newline() << "task_unlock(t);";
+  s.op->newline() << "if (! mm) {";
   s.op->newline(1) << "_stp_dbug(__FUNCTION__, __LINE__, \"skipping pid %d\", t->pid);";
   s.op->newline() << "continue;";
   s.op->newline(-1) << "}";
@@ -4698,9 +4722,47 @@ utrace_derived_probe_group::emit_module_decls (systemtap_session& s)
   s.op->newline(1) << "_stp_error(\"utrace_attach returned NULL!\");";
   s.op->newline() << "rc = -EFAULT;";
   s.op->newline(-1) << "}";
+
+  s.op->newline() << "else {";
+  s.op->indent(1);
+  s.op->newline() << "char mmpath[PATH_MAX];";
+  s.op->newline() << "utrace_set_flags(t, engine, STAP_UTRACE_TASK_FINDER_EVENTS);";
+  s.op->newline() << "if (stap_utrace_get_mm_path(mm, mmpath, sizeof(mmpath))) {";
+  s.op->indent(1);
+  
+  s.op->newline() << "size_t mmpathlen = strlen(mmpath);";
+  s.op->newline() << "int i;";
+  s.op->newline() << "for (i=0; i<" << probes_by_path.size() << "; i++) {";
+  s.op->indent(1);
+  s.op->newline() << "if (mmpathlen == stap_utrace_task_finder_targets[i].pathlen && strcmp(mmpath, stap_utrace_task_finder_targets[i].pathname) == 0) {";
+  s.op->indent(1);
+  s.op->newline() << "struct utrace_attached_engine *engine;";
+  s.op->newline() << "_stp_dbug(__FUNCTION__, __LINE__, \"found a match!\");";
+  s.op->newline() << "engine = utrace_attach(t, UTRACE_ATTACH_CREATE, &stap_utrace_probe_ops, &stap_utrace_task_finder_targets[i]);";
+  s.op->newline() << "if (IS_ERR(engine)) {";
+  s.op->newline(1) << "int error = -PTR_ERR(engine);";
+  s.op->newline() << "if (error != ENOENT) {";
+  s.op->newline(1) << "_stp_error(\"utrace_attach returned error %d on pid %d\", error, (int)t->pid);";
+  s.op->newline(-1) << "}";
+  s.op->newline(-1) << "}";
+  s.op->newline() << "else if (unlikely(engine == NULL)) {";
+  s.op->newline(1) << "_stp_error(\"utrace_attach returned NULL!\");";
+  s.op->newline(-1) << "}";
   s.op->newline() << "else";
-  s.op->newline(1) << "utrace_set_flags(t, engine, STAP_UTRACE_TASK_FINDER_EVENTS);";
+  s.op->newline(1) << "utrace_set_flags(t, engine, UTRACE_EVENT(DEATH));";
   s.op->indent(-1);
+  s.op->newline(-1) << "}";
+
+
+//
+//DRS - need to put utrace attach in a subroutine... inlined too many times...
+//
+
+  s.op->newline(-1) << "}";
+  s.op->newline(-1) << "}";
+
+  s.op->newline(-1) << "}";
+  s.op->newline() << "mmput(mm);";
   s.op->newline(-1) << "}";
   s.op->newline() << "rcu_read_unlock();";
   s.op->newline() << "return rc;";
@@ -4795,7 +4857,7 @@ utrace_derived_probe_group::emit_module_init (systemtap_session& s)
   s.op->newline () << "WARN_ON(atomic_dec_and_test(&sup->target_tsk->usage));";
   s.op->newline(-1) << "}";
 #else
-  s.op->newline() << "rc = stap_start_utrace_task_finder();";
+  s.op->newline() << "rc = stap_utrace_start_task_finder();";
 #endif
 
   // rollback all utrace probes
