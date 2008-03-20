@@ -4399,8 +4399,10 @@ private:
   typedef map<string, vector<utrace_derived_probe*> >::iterator p_b_path_iterator;
   map<int64_t, vector<utrace_derived_probe*> > probes_by_pid;
   typedef map<int64_t, vector<utrace_derived_probe*> >::iterator p_b_pid_iterator;
+  unsigned num_probes;
 
 public:
+  utrace_derived_probe_group(): num_probes(0) {}
   void enroll (utrace_derived_probe* probe);
   void emit_module_decls (systemtap_session& s);
   void emit_module_init (systemtap_session& s);
@@ -4454,6 +4456,7 @@ utrace_derived_probe_group::enroll (utrace_derived_probe* p)
     probes_by_path[p->path].push_back(p);
   else
     probes_by_pid[p->pid].push_back(p);
+  num_probes++;
 
   // XXX: multiple exec probes (for instance) for the same path (or
   // pid) should all share a utrace report function, and have their
@@ -4481,18 +4484,16 @@ utrace_derived_probe_group::emit_module_decls (systemtap_session& s)
 
   s.op->newline() << "struct stap_utrace_probe {";
   s.op->indent(1);
-//  s.op->newline() << "union { struct uprobe up; struct uretprobe urp; };";
+  s.op->newline() << "const char *pathname;";
+  s.op->newline() << "size_t pathlen;";
   s.op->newline() << "const char *pp;";
   s.op->newline() << "void (*ph) (struct context*);";
   s.op->newline() << "pid_t target_pid;";
-  s.op->newline() << "struct task_struct *target_tsk;";
-  s.op->newline() << "unsigned registered_p;";
+//  s.op->newline() << "unsigned registered_p;";
 //  s.op->newline() << "unsigned registered_p:1;";
-//  s.op->newline() << "unsigned return_p:1;";
-//  s.op->newline() << "unsigned long process;";
-//  s.op->newline() << "unsigned long address;";
   s.op->newline(-1) << "};";
 
+#if 0
   s.op->newline() << "struct stap_utrace_task_finder_target {";
   s.op->indent(1);
   s.op->newline() << "const char *pathname;";
@@ -4500,12 +4501,18 @@ utrace_derived_probe_group::emit_module_decls (systemtap_session& s)
   s.op->newline() << "unsigned numprobes;";
   s.op->newline() << "struct stap_utrace_probe *probes;";
   s.op->newline(-1) << "};";
+#endif
 
+#if 0
   s.op->newline() << "static u32 stap_utrace_probe_death(struct utrace_attached_engine *engine, struct task_struct *tsk) {";
   s.op->indent(1);
-  s.op->newline() << "struct stap_utrace_task_finder_target *utrace_target = (struct stap_utrace_task_finder_target *)engine->data;";
-  s.op->newline() << "unsigned i;";
+  s.op->newline() << "struct stap_utrace_probe *p = (struct stap_utrace_probe *)engine->data;";
+  s.op->newline() << "_stp_dbug(__FUNCTION__, __LINE__, \"in stap_utrace_probe_death\");";
 
+  // oops, instead of a list of probes, we now have a pointer to 1
+  // probe - how to handle multiple probes?
+#if 0
+  s.op->newline() << "unsigned i;";
   s.op->newline() << "for (i = 0; i < utrace_target->numprobes; i++) {";
   s.op->indent(1);
   s.op->newline() << "struct stap_utrace_probe *p = &utrace_target->probes[i];";
@@ -4516,10 +4523,10 @@ utrace_derived_probe_group::emit_module_decls (systemtap_session& s)
   s.op->newline() << "(*p->ph) (c);";
   common_probe_entryfn_epilogue (s.op);
   s.op->newline(-1) << "}";
+#endif
 
   s.op->newline() << "return UTRACE_ACTION_RESUME;";
   s.op->newline(-1) << "}";
-
 
   s.op->newline() << "struct utrace_engine_ops stap_utrace_probe_ops = {";
   s.op->indent(1);
@@ -4529,7 +4536,35 @@ utrace_derived_probe_group::emit_module_decls (systemtap_session& s)
   // need .report_exit/.report_death?
   s.op->newline() << ".report_death = stap_utrace_probe_death,";
   s.op->newline(-1) << "};";
+#endif
 
+  // Output routine to handle utrace probes
+  s.op->newline() << "static void _stp_utrace_probe_cb(const char *pathname, size_t pathlen, struct task_struct *tsk, int entry_p, void *data) {";
+  s.op->indent(1);
+  s.op->newline() << "struct stap_utrace_probe *p = (struct stap_utrace_probe *)data;";
+  s.op->newline() << "struct utrace_attached_engine *engine;";
+
+  s.op->newline() << "_stp_dbug(__FUNCTION__, __LINE__, \"registering pp %s\", p->pp);";
+#if 0
+  s.op->newline() << "engine = utrace_attach(tsk, UTRACE_ATTACH_CREATE, &stap_utrace_probe_ops, p);";
+  s.op->newline() << "if (IS_ERR(engine)) {";
+  s.op->indent(1);
+  s.op->newline() << "int error = -PTR_ERR(engine);";
+  s.op->newline() << "if (error != ENOENT) {";
+  s.op->indent(1);
+  s.op->newline() << "_stp_error(\"utrace_attach returned error %d on pid %d\", error, (int)tsk->pid);";
+  s.op->newline(-1) << "}";
+  s.op->newline(-1) << "}";
+  s.op->newline() << "else if (unlikely(engine == NULL)) {";
+  s.op->indent(1);
+  s.op->newline() << "_stp_error(\"utrace_attach returned NULL!\");";
+  s.op->newline(-1) << "}";
+  s.op->newline() << "else {";
+  s.op->indent(1);
+  s.op->newline() << "utrace_set_flags(tsk, engine, UTRACE_EVENT(DEATH));";
+  s.op->newline(-1) << "}";
+#endif
+  s.op->newline(-1) << "}";
 
   // Set up 'process(PATH)' probes
   if (! probes_by_path.empty())
@@ -4539,11 +4574,12 @@ utrace_derived_probe_group::emit_module_decls (systemtap_session& s)
       for (p_b_path_iterator it = probes_by_path.begin();
 	   it != probes_by_path.end(); it++)
         {
-	  s.op->newline() << "// '" << it->first << "' probes";
 	  for (unsigned i = 0; i < it->second.size(); i++)
 	    {
 	      utrace_derived_probe *p = it->second[i];
 	      s.op->newline() << "{";
+	      s.op->line() << " .pathname=\"" << it->first << "\",";
+	      s.op->line() << " .pathlen=" << it->first.length() << ",";
 	      s.op->line() << " .pp=" << lex_cast_qstring (*p->sole_location()) << ",";
 	      s.op->line() << " .ph=&" << p->name << ",";
 //	      s.op->line() << " .address=0x" << hex << p->address << dec << "UL,";
@@ -4554,6 +4590,7 @@ utrace_derived_probe_group::emit_module_decls (systemtap_session& s)
 	}
       s.op->newline(-1) << "};";
 
+#if 0
       // Output list of paths to look for
       s.op->newline() << "struct stap_utrace_task_finder_target stap_utrace_task_finder_targets[] = {";
       s.op->indent(1);
@@ -4572,6 +4609,7 @@ utrace_derived_probe_group::emit_module_decls (systemtap_session& s)
 	  probe_count += it->second.size();
       }
       s.op->newline(-1) << "};";
+#endif
       s.op->newline() << "#define STAP_UTRACE_TASK_FINDER_EVENTS (UTRACE_EVENT(CLONE) | UTRACE_EVENT(EXEC))";
 
       // On clone, attach to the child.
@@ -4579,12 +4617,30 @@ utrace_derived_probe_group::emit_module_decls (systemtap_session& s)
       s.op->newline(2) << "struct task_struct *parent, unsigned long clone_flags,";
       s.op->newline() << "struct task_struct *child) {";
       s.op->newline(-1) << "struct utrace_attached_engine *child_engine;";
+
+      // We want to ignore tasks without a memory map - those are
+      // kernel tasks.  I doubt this can happen here, but let's be
+      // sure... 
+      s.op->newline() << "struct mm_struct *mm;";
+
+      s.op->newline() << "_stp_dbug(__FUNCTION__, __LINE__, \"current pid is %d\", child->pid);";
+
+      s.op->newline() << "mm = get_task_mm(child);";
+      s.op->newline() << "if (! mm) {";
+      s.op->indent(1);
+      s.op->newline() << "_stp_dbug(__FUNCTION__, __LINE__, \"skipping pid %d\", child->pid);";
+      s.op->newline(-1) << "}";
+
+      s.op->newline() << "else {";
+      s.op->indent(1);
+      s.op->newline() << "mmput(mm);";
       s.op->newline() << "child_engine = utrace_attach(child, UTRACE_ATTACH_CREATE, engine->ops, 0);";
       s.op->newline() << "if (IS_ERR(child_engine))";
       s.op->newline(1) << "_stp_error(\"attach to clone child %d (%lx) from 0x%p failed: %ld\", (int)child->pid, clone_flags, engine, PTR_ERR(child_engine));";
       s.op->newline(-1) << "else {";
       s.op->newline(1) << "utrace_set_flags(child, child_engine, STAP_UTRACE_TASK_FINDER_EVENTS);";
       s.op->newline() << "_stp_dbug(__FUNCTION__, __LINE__, \"attach to clone child %d (%lx) from 0x%p\", (int)child->pid, clone_flags, engine);";
+      s.op->newline(-1) << "}";
       s.op->newline(-1) << "}";
       s.op->newline() << "return UTRACE_ACTION_RESUME;";
       s.op->newline(-1) << "}";
@@ -4595,8 +4651,10 @@ utrace_derived_probe_group::emit_module_decls (systemtap_session& s)
       s.op->newline() << "struct pt_regs *regs) {";
       s.op->indent(-1);
       s.op->newline() << "_stp_dbug(__FUNCTION__, __LINE__, \"pid %d is exec'ing '%s' ('%s')\", (int)tsk->pid, (bprm->filename == NULL) ? \"(none)\" : bprm->filename, (bprm->interp == NULL) ? \"(none)\" : bprm->interp);";
+#if 0
       s.op->newline() << "if (bprm->filename != NULL) {";
       s.op->newline(1) << "size_t filelen = strlen(bprm->filename);";
+#if 0
       s.op->newline() << "int i;";
       s.op->newline() << "for (i=0; i<" << probes_by_path.size() << "; i++) {";
       s.op->newline(1) << "if (filelen == stap_utrace_task_finder_targets[i].pathlen && strcmp(bprm->filename, stap_utrace_task_finder_targets[i].pathname) == 0) {";
@@ -4619,7 +4677,33 @@ utrace_derived_probe_group::emit_module_decls (systemtap_session& s)
 
       s.op->newline(-1) << "}";
       s.op->newline(-1) << "}";
+#else
+      s.op->newline() << "struct list_head *node;";
+      s.op->newline() << "_stp_utrace_task_finder_target *tgt;";
+      s.op->newline() << "int found_node = 0;";
+      // Search the list for an entry for pathname.
+      s.op->newline() << "list_for_each(node, &_stp_task_finder_list) {";
+      s.op->indent(1);
+      s.op->newline() << "tgt = list_entry(node, _stp_utrace_task_finder_target, list);";
+      s.op->newline() << "if (tgt->pathlen == filelen && strcmp(tgt->pathname, bprm->filename) == 0) {";
+      s.op->indent(1);
+      s.op->newline() << "_stp_dbug(__FUNCTION__, __LINE__, \"found a match!\");";
+      s.op->newline() << "found_node = 1;";
+      s.op->newline() << "break;";
       s.op->newline(-1) << "}";
+      s.op->newline(-1) << "}";
+      s.op->newline() << "if (found_node) {";
+      s.op->indent(1);
+      s.op->newline() << "_stp_utrace_task_finder_callback *cb;";
+      s.op->newline() << "list_for_each(node, &tgt->list) {";
+      s.op->indent(1);
+      s.op->newline() << "cb = list_entry(node, _stp_utrace_task_finder_callback, list);";
+      s.op->newline() << "cb->callback(bprm->filename, filelen, tsk, 1, cb->data);";
+      s.op->newline(-1) << "}";
+      s.op->newline(-1) << "}";
+#endif
+      s.op->newline(-1) << "}";
+#endif
       s.op->newline() << "return UTRACE_ACTION_RESUME;";
       s.op->newline(-1) << "}";
 
@@ -4696,93 +4780,127 @@ utrace_derived_probe_group::emit_module_decls (systemtap_session& s)
 
   s.op->newline() << "int stap_utrace_start_task_finder (void) {";
   s.op->newline(1) << "int rc = 0;";
-  s.op->newline() << "struct task_struct *t;";
+  s.op->newline() << "struct task_struct *tsk;";
   s.op->newline() << "struct utrace_attached_engine *engine;";
   s.op->newline() << "rcu_read_lock();";
-  s.op->newline() << "for_each_process(t) {";
+  s.op->newline() << "for_each_process(tsk) {";
   s.op->indent(1);
   // We want to ignore tasks without a memory map - those are kernel tasks.
-  s.op->newline() << "struct mm_struct *mm = NULL;";
-  s.op->newline() << "task_lock(t);";
-  s.op->newline() << "mm = get_task_mm(t);";
-  s.op->newline() << "task_unlock(t);";
+  s.op->newline() << "struct mm_struct *mm;";
+  s.op->newline() << "mm = get_task_mm(tsk);";
   s.op->newline() << "if (! mm) {";
-  s.op->newline(1) << "_stp_dbug(__FUNCTION__, __LINE__, \"skipping pid %d\", t->pid);";
+  s.op->indent(1);
+  s.op->newline() << "_stp_dbug(__FUNCTION__, __LINE__, \"skipping pid %d\", tsk->pid);";
   s.op->newline() << "continue;";
   s.op->newline(-1) << "}";
-  s.op->newline() << "engine = utrace_attach(t, UTRACE_ATTACH_CREATE, &stap_utrace_task_finder_ops, 0);";
+  s.op->newline() << "engine = utrace_attach(tsk, UTRACE_ATTACH_CREATE, &stap_utrace_task_finder_ops, 0);";
   s.op->newline() << "if (IS_ERR(engine)) {";
   s.op->newline(1) << "int error = -PTR_ERR(engine);";
   s.op->newline() << "if (error != ENOENT) {";
-  s.op->newline(1) << "_stp_error(\"utrace_attach returned error %d on pid %d\", error, (int)t->pid);";
+  s.op->indent(1);
+  s.op->newline() << "_stp_error(\"utrace_attach returned error %d on pid %d\", error, (int)tsk->pid);";
   s.op->newline() << "rc = error;";
   s.op->newline(-1) << "}";
   s.op->newline(-1) << "}";
   s.op->newline() << "else if (unlikely(engine == NULL)) {";
-  s.op->newline(1) << "_stp_error(\"utrace_attach returned NULL!\");";
+  s.op->indent(1);
+  s.op->newline() << "_stp_error(\"utrace_attach returned NULL!\");";
   s.op->newline() << "rc = -EFAULT;";
   s.op->newline(-1) << "}";
 
   s.op->newline() << "else {";
   s.op->indent(1);
-  s.op->newline() << "char mmpath[PATH_MAX];";
-  s.op->newline() << "utrace_set_flags(t, engine, STAP_UTRACE_TASK_FINDER_EVENTS);";
+  s.op->newline() << "char *mmpath;";
+  s.op->newline() << "utrace_set_flags(tsk, engine, STAP_UTRACE_TASK_FINDER_EVENTS);";
+  s.op->newline() << "_stp_dbug(__FUNCTION__, __LINE__, \"attach to pid %d\", (int)tsk->pid);";
+  s.op->newline() << "mmpath = _stp_kmalloc(PATH_MAX);";
+  s.op->newline() << "if (mmpath == NULL)";
+  s.op->indent(1);
+  s.op->newline() << "rc = -ENOMEM;";
+  s.op->indent(-1);
+  s.op->newline() << "else {";
+  s.op->indent(1);
+
+
   s.op->newline() << "if (stap_utrace_get_mm_path(mm, mmpath, sizeof(mmpath))) {";
   s.op->indent(1);
   
   s.op->newline() << "size_t mmpathlen = strlen(mmpath);";
-  s.op->newline() << "int i;";
-  s.op->newline() << "for (i=0; i<" << probes_by_path.size() << "; i++) {";
-  s.op->indent(1);
-  s.op->newline() << "if (mmpathlen == stap_utrace_task_finder_targets[i].pathlen && strcmp(mmpath, stap_utrace_task_finder_targets[i].pathname) == 0) {";
-  s.op->indent(1);
-  s.op->newline() << "struct utrace_attached_engine *engine;";
-  s.op->newline() << "_stp_dbug(__FUNCTION__, __LINE__, \"found a match!\");";
-  s.op->newline() << "engine = utrace_attach(t, UTRACE_ATTACH_CREATE, &stap_utrace_probe_ops, &stap_utrace_task_finder_targets[i]);";
-  s.op->newline() << "if (IS_ERR(engine)) {";
-  s.op->newline(1) << "int error = -PTR_ERR(engine);";
-  s.op->newline() << "if (error != ENOENT) {";
-  s.op->newline(1) << "_stp_error(\"utrace_attach returned error %d on pid %d\", error, (int)t->pid);";
-  s.op->newline(-1) << "}";
-  s.op->newline(-1) << "}";
-  s.op->newline() << "else if (unlikely(engine == NULL)) {";
-  s.op->newline(1) << "_stp_error(\"utrace_attach returned NULL!\");";
-  s.op->newline(-1) << "}";
-  s.op->newline() << "else";
-  s.op->newline(1) << "utrace_set_flags(t, engine, UTRACE_EVENT(DEATH));";
-  s.op->indent(-1);
-  s.op->newline(-1) << "}";
-
 
 //
 //DRS - need to put utrace attach in a subroutine... inlined too many times...
 //
 
+  s.op->newline() << "struct list_head *node;";
+  s.op->newline() << "_stp_utrace_task_finder_target *tgt;";
+  s.op->newline() << "int found_node = 0;";
+  // Search the list for an entry for pathname.
+  s.op->newline() << "list_for_each(node, &_stp_task_finder_list) {";
+  s.op->indent(1);
+  s.op->newline() << "tgt = list_entry(node, _stp_utrace_task_finder_target, list);";
+  s.op->newline() << "if (tgt->pathlen == mmpathlen && strcmp(tgt->pathname, mmpath) == 0) {";
+  s.op->indent(1);
+  s.op->newline() << "_stp_dbug(__FUNCTION__, __LINE__, \"found a match!\");";
+  s.op->newline() << "found_node = 1;";
+  s.op->newline() << "break;";
   s.op->newline(-1) << "}";
   s.op->newline(-1) << "}";
-
+  s.op->newline() << "if (found_node) {";
+  s.op->indent(1);
+  s.op->newline() << "_stp_utrace_task_finder_callback *cb;";
+  s.op->newline() << "list_for_each(node, &tgt->list) {";
+  s.op->indent(1);
+  s.op->newline() << "cb = list_entry(node, _stp_utrace_task_finder_callback, list);";
+  s.op->newline() << "cb->callback(mmpath, mmpathlen, tsk, 1, cb->data);";
+  s.op->newline(-1) << "}";
+  s.op->newline(-1) << "}";
+  s.op->newline(-1) << "}";
+  s.op->newline() << "_stp_kfree(mmpath);";
+  s.op->newline(-1) << "}";
   s.op->newline(-1) << "}";
   s.op->newline() << "mmput(mm);";
+  s.op->newline() << "if (rc != 0) {";
+  s.op->indent(1);
+  s.op->newline() << "break;";
+  s.op->newline(-1) << "}";
   s.op->newline(-1) << "}";
   s.op->newline() << "rcu_read_unlock();";
   s.op->newline() << "return rc;";
   s.op->newline(-1) << "}";
 
   s.op->newline() << "void stap_utrace_detach_ops (struct utrace_engine_ops *ops) {";
-  s.op->newline(1) << "struct task_struct *t;";
+  s.op->indent(1);
+  s.op->newline() << "struct task_struct *tsk;";
   s.op->newline() << "struct utrace_attached_engine *engine;";
   s.op->newline() << "_stp_dbug(__FUNCTION__, __LINE__, \"enter\");";
   s.op->newline() << "rcu_read_lock();";
-  s.op->newline() << "for_each_process(t) {";
-  s.op->newline(1) << "engine = utrace_attach(t, UTRACE_ATTACH_MATCH_OPS, ops, 0);";
+  s.op->newline() << "for_each_process(tsk) {";
+  s.op->indent(1);
+
+  // We want to ignore tasks without a memory map - those are kernel tasks.
+  s.op->newline() << "struct mm_struct *mm;";
+  s.op->newline() << "mm = get_task_mm(tsk);";
+  s.op->newline() << "if (! mm) {";
+  s.op->indent(1);
+  s.op->newline() << "_stp_dbug(__FUNCTION__, __LINE__, \"skipping pid %d\", tsk->pid);";
+  s.op->newline(-1) << "}";
+  s.op->newline() << "else {";
+  s.op->indent(1);
+  s.op->newline() << "mmput(mm);";
+  s.op->newline() << "engine = utrace_attach(tsk, UTRACE_ATTACH_MATCH_OPS, ops, 0);";
   s.op->newline() << "if (IS_ERR(engine)) {";
-  s.op->newline(1) << "int error = -PTR_ERR(engine);";
-  s.op->newline() << "if (error != ENOENT)";
-  s.op->newline(1) << "_stp_error(\"utrace_attach returned error %d on pid %d\", error, (int)t->pid);";
-  s.op->newline(-2) << "}";
+  s.op->indent(1);
+  s.op->newline() << "int error = -PTR_ERR(engine);";
+  s.op->newline() << "if (error != ENOENT) {";
+  s.op->indent(1);
+  s.op->newline() << "_stp_error(\"utrace_attach returned error %d on pid %d\", error, (int)tsk->pid);";
+  s.op->newline(-1) << "}";
+  s.op->newline(-1) << "}";
   s.op->newline() << "else if (engine != NULL) {";
-  s.op->newline(1) << "utrace_detach(t, engine);";
-  s.op->newline() << "_stp_dbug(__FUNCTION__, __LINE__, \"detached from pid %d\", (int)t->pid);";
+  s.op->indent(1);
+  s.op->newline() << "utrace_detach(tsk, engine);";
+//  s.op->newline() << "_stp_dbug(__FUNCTION__, __LINE__, \"detached from pid %d\", (int)tsk->pid);";
+  s.op->newline(-1) << "}";
   s.op->newline(-1) << "}";
   s.op->newline(-1) << "}";
   s.op->newline() << "rcu_read_unlock();";
@@ -4857,7 +4975,30 @@ utrace_derived_probe_group::emit_module_init (systemtap_session& s)
   s.op->newline () << "WARN_ON(atomic_dec_and_test(&sup->target_tsk->usage));";
   s.op->newline(-1) << "}";
 #else
+
+#if 1
+  // Set up 'process(PATH)' probes
+  if (! probes_by_path.empty())
+    {
+      s.op->newline() << "for (i=0; i<" << num_probes << "; i++) {";
+      s.op->indent(1);
+      s.op->newline() << "struct stap_utrace_probe *p = &stap_utrace_path_probes[i];";
+      s.op->newline() << "stap_notify_process(p->pathname, p->pathlen, &_stp_utrace_probe_cb, p);";
+      s.op->newline(-1) << "}";
+    }  
+#endif
+
+#if 1
+  s.op->newline() << "_stp_dbug(__FUNCTION__, __LINE__, \"calling stap_utrace_start_task_finder...\");";
+#if 1
   s.op->newline() << "rc = stap_utrace_start_task_finder();";
+#else
+  s.op->newline() << "rc = 0;";
+#endif
+  s.op->newline() << "_stp_dbug(__FUNCTION__, __LINE__, \"finished calling stap_utrace_start_task_finder...\");";
+#else
+  s.op->newline() << "_stp_dbug(__FUNCTION__, __LINE__, \"*not* calling stap_utrace_start_task_finder...\");";
+#endif
 #endif
 
   // rollback all utrace probes
@@ -4885,7 +5026,10 @@ utrace_derived_probe_group::emit_module_exit (systemtap_session& s)
   // Stop the task finder first...
   s.op->newline() << "stap_utrace_detach_ops(&stap_utrace_task_finder_ops);";
   // Detach other utrace engines
+#if 0
   s.op->newline() << "stap_utrace_detach_ops(&stap_utrace_probe_ops);";
+#endif
+  s.op->newline() << "stap_notify_cleanup();";
 }
 
 
