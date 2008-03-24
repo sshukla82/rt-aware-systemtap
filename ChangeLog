@@ -1,3 +1,13 @@
+2008-03-24  David Smith  <dsmith@redhat.com>
+
+	* tapsets.cxx (utrace_derived_probe_group::emit_module_decls):
+	Added utrace_engine_ops structure to output probe structure.
+	Renabled death probes.  Output _stp_utrace_probe_cb() function
+	handles entry/exit correctly.  Outputs better error handling when
+	calling stap_utrace_get_mm_path().
+	(utrace_derived_probe_group::emit_module_init): Output code calls
+	stap_notify_cleanup().
+	
 2008-03-20  David Smith  <dsmith@redhat.com>
 
 	* tapsets.cxx (struct utrace_derived_probe_group): Added
