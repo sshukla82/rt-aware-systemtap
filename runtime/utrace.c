@@ -91,6 +91,10 @@ stap_notify_cleanup(void)
 			if (cb == NULL)
 				continue;
 
+			if (cb->callback != NULL)
+				cb->callback(tgt->pathname, tgt->pathlen, NULL,
+					     0, cb->data);
+
 			list_del(&cb->list);
 			_stp_kfree(cb);
 		}
@@ -98,4 +102,70 @@ stap_notify_cleanup(void)
 		list_del(&tgt->list);
 		_stp_kfree(tgt);
 	}
+}
+
+void stap_utrace_detach_ops (struct utrace_engine_ops *ops)
+{
+	struct task_struct *tsk;
+	struct utrace_attached_engine *engine;
+	long error = 0;
+	pid_t pid = 0;
+
+	_stp_dbug(__FUNCTION__, __LINE__, "enter");
+	rcu_read_lock();
+	for_each_process(tsk) {
+		struct mm_struct *mm;
+		mm = get_task_mm(tsk);
+		if (mm) {
+			mmput(mm);
+			engine = utrace_attach(tsk, UTRACE_ATTACH_MATCH_OPS,
+					       ops, 0);
+			if (IS_ERR(engine)) {
+				error = -PTR_ERR(engine);
+				if (error != ENOENT) {
+					pid = tsk->pid;
+					break;
+				}
+				error = 0;
+			}
+			else if (engine != NULL) {
+				utrace_detach(tsk, engine);
+			}
+		}
+	}
+	rcu_read_unlock();
+	_stp_dbug(__FUNCTION__, __LINE__, "exit");
+
+	if (error != 0) {
+		_stp_error("utrace_attach returned error %d on pid %d",
+			   error, pid);
+	}
+}
+
+static char *
+stap_utrace_get_mm_path(struct mm_struct *mm, char *buf, int buflen)
+{
+	struct vm_area_struct *vma;
+	char *rc = NULL;
+
+	down_read(&mm->mmap_sem);
+	vma = mm->mmap;
+	while (vma) {
+		if ((vma->vm_flags & VM_EXECUTABLE) && vma->vm_file)
+			break;
+		vma = vma->vm_next;
+	}
+	if (vma) {
+		struct vfsmount *mnt = mntget(vma->vm_file->f_path.mnt);
+		struct dentry *dentry = dget(vma->vm_file->f_path.dentry);
+		rc = d_path(dentry, mnt, buf, buflen);
+		dput(dentry);
+		mntput(mnt);
+	}
+	else {
+		*buf = '\0';
+		rc = ERR_PTR(ENOENT);
+	}
+	up_read(&mm->mmap_sem);
+	return rc;
 }

@@ -1,3 +1,9 @@
+2008-03-24  David Smith  <dsmith@redhat.com>
+
+	* utrace.c (stap_utrace_detach_ops): Moved function here from
+	tapsets.cxx.
+	(stap_utrace_get_mm_path): Ditto.
+
 2008-03-20  David Smith  <dsmith@redhat.com>
 
 	* utrace.c: New file.
