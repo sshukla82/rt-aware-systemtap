@@ -214,7 +214,7 @@ main (int argc, char * const argv [])
   bool have_script = false;
   bool release_changed = false;
   bool save_module = false;
-  bool list_mode = false;
+  bool list_mode = false; //
 
   // Initialize defaults
   systemtap_session s;
