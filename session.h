@@ -163,4 +163,7 @@ struct systemtap_session
 };
 
 
+// global counter of SIGINT/SIGTERM's received
+extern int pending_interrupts;
+
 #endif // SESSION_H

@@ -827,6 +827,7 @@ struct dwflpp
         ptrdiff_t off = 0;
         do
           {
+            if (pending_interrupts) return;
             off = dwfl_getmodules (dwfl, module_caching_callback,
                                    & module_cache, off);
           }
@@ -837,6 +838,7 @@ struct dwflpp
     // Traverse the cache.
     for (unsigned i = 0; i < module_cache.size(); i++)
       {
+        if (pending_interrupts) return;
         module_cache_entry& it = module_cache[i];
         int rc = callback (it.mod, 0, it.name, it.addr, data);
         if (rc != DWARF_CB_OK) break;
@@ -868,6 +870,7 @@ struct dwflpp
         Dwarf_Off noff;
         while (dwarf_nextcu (dw, off, &noff, &cuhl, NULL, NULL, NULL) == 0)
           {
+            if (pending_interrupts) return;
             Dwarf_Die die_mem;
             Dwarf_Die *die;
             die = dwarf_offdie (dw, off + cuhl, &die_mem);
@@ -878,6 +881,7 @@ struct dwflpp
 
     for (unsigned i = 0; i < v->size(); i++)
       {
+        if (pending_interrupts) return;
         Dwarf_Die die = v->at(i);
         int rc = (*callback)(& die, data);
         if (rc != DWARF_CB_OK) break;
@@ -1057,6 +1061,7 @@ struct dwflpp
       {
 	for (size_t i = 0; i < nsrcs; ++i)
 	  {
+            if (pending_interrupts) return;
             if (srcsp [i]) // skip over mismatched lines
               callback (srcsp[i], data);
 	  }
@@ -1596,7 +1601,7 @@ struct dwflpp
 	    if (components[i].first == target_symbol::comp_literal_array_index)
               throw semantic_error ("cannot index pointer");
             // XXX: of course, we should support this the same way C does,
-            // by explicit pointer arithmetic etc.
+            // by explicit pointer arithmetic etc.  PR4166.
 
 	    c_translate_pointer (pool, 1, module_bias, die, tail);
 	    break;
@@ -1768,10 +1773,7 @@ struct dwflpp
       case DW_TAG_array_type:
       case DW_TAG_pointer_type:
 
-	if (lvalue)
-	  throw semantic_error ("cannot store into target pointer value");
-
-	{
+          {
 	  Dwarf_Die pointee_typedie_mem;
 	  Dwarf_Die *pointee_typedie;
 	  Dwarf_Word pointee_encoding;
@@ -1785,21 +1787,33 @@ struct dwflpp
 	  dwarf_formudata (dwarf_attr_integrate (pointee_typedie, DW_AT_encoding, attr_mem),
 			   &pointee_encoding);
 
-	  // We have the pointer: cast it to an integral type via &(*(...))
-
-	  // NB: per bug #1187, at one point char*-like types were
-	  // automagically converted here to systemtap string values.
-	  // For several reasons, this was taken back out, leaving
-	  // pointer-to-string "conversion" (copying) to tapset functions.
-
-	  ty = pe_long;
-	  if (typetag == DW_TAG_array_type)
-	    c_translate_array (pool, 1, module_bias, typedie, tail, NULL, 0);
-	  else
-	    c_translate_pointer (pool, 1, module_bias, typedie, tail);
-	  c_translate_addressof (pool, 1, module_bias, NULL, pointee_typedie, tail,
-				 "THIS->__retvalue");
-	}
+          if (lvalue)
+            {
+              ty = pe_long;
+              if (typetag == DW_TAG_array_type)
+                throw semantic_error ("cannot write to array address");
+              assert (typetag == DW_TAG_pointer_type);
+              c_translate_pointer_store (pool, 1, module_bias, typedie, tail,
+                                         "THIS->value");
+            }
+          else
+            {
+              // We have the pointer: cast it to an integral type via &(*(...))
+              
+              // NB: per bug #1187, at one point char*-like types were
+              // automagically converted here to systemtap string values.
+              // For several reasons, this was taken back out, leaving
+              // pointer-to-string "conversion" (copying) to tapset functions.
+              
+              ty = pe_long;
+              if (typetag == DW_TAG_array_type)
+                c_translate_array (pool, 1, module_bias, typedie, tail, NULL, 0);
+              else
+                c_translate_pointer (pool, 1, module_bias, typedie, tail);
+              c_translate_addressof (pool, 1, module_bias, NULL, pointee_typedie, tail,
+                                     "THIS->__retvalue");
+            }
+          }
 	break;
       }
   }
@@ -3012,6 +3026,7 @@ static int
 query_cu (Dwarf_Die * cudie, void * arg)
 {
   dwarf_query * q = static_cast<dwarf_query *>(arg);
+  if (pending_interrupts) return DWARF_CB_ABORT;
 
   try
     {

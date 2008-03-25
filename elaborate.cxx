@@ -344,6 +344,8 @@ match_node::find_and_build (systemtap_session& s,
 	  const match_key& subkey = i->first;
 	  match_node* subnode = i->second;
 
+          if (pending_interrupts) break;
+
 	  if (match.globmatch(subkey))
 	    {
 	      if (s.verbose > 2)
@@ -627,6 +629,8 @@ derive_probes (systemtap_session& s,
 {
   for (unsigned i = 0; i < p->locations.size(); ++i)
     {
+      if (pending_interrupts) break;
+
       probe_point *loc = p->locations[i];
 
       try
@@ -692,11 +696,15 @@ struct symbol_fetcher
 {
   symbol *&sym;
 
-  symbol_fetcher (symbol *&sym)
-    : sym(sym) 
+  symbol_fetcher (symbol *&sym): sym(sym) 
   {}
 
   void visit_symbol (symbol* e)
+  {
+    sym = e;
+  }
+
+  void visit_target_symbol (target_symbol* e)
   {
     sym = e;
   }
@@ -718,9 +726,7 @@ get_symbol_within_expression (expression *e)
   symbol *sym = NULL;
   symbol_fetcher fetcher(sym);
   e->visit (&fetcher);
-  if (!sym)
-    throw semantic_error("Unable to find symbol in expression", e->tok);
-  return sym;
+  return sym; // NB: may be null!
 }
 
 static symbol *
@@ -1070,6 +1076,7 @@ semantic_pass_symbols (systemtap_session& s)
   s.files.push_back (s.user_file);
   for (unsigned i = 0; i < s.files.size(); i++)
     {
+      if (pending_interrupts) break;
       stapfile* dome = s.files[i];
 
       // Pass 1: add globals and functions to systemtap-session master list,
@@ -1088,6 +1095,7 @@ semantic_pass_symbols (systemtap_session& s)
 
       for (unsigned i=0; i<dome->functions.size(); i++)
         {
+          if (pending_interrupts) break;
           functiondecl* fd = dome->functions[i];
 
           try 
@@ -1107,6 +1115,7 @@ semantic_pass_symbols (systemtap_session& s)
 
       for (unsigned i=0; i<dome->probes.size(); i++)
         {
+          if (pending_interrupts) break;
           probe* p = dome->probes [i];
           vector<derived_probe*> dps;
 
@@ -1116,6 +1125,7 @@ semantic_pass_symbols (systemtap_session& s)
 
           for (unsigned j=0; j<dps.size(); j++)
             {
+              if (pending_interrupts) break;
               derived_probe* dp = dps[j];
               s.probes.push_back (dp);
               dp->join_group (s);
@@ -1710,12 +1720,12 @@ void
 dead_assignment_remover::visit_assignment (assignment* e)
 {
   symbol* left = get_symbol_within_expression (e->left);
-  vardecl* leftvar = left->referent;
+  vardecl* leftvar = left->referent; // NB: may be 0 for unresolved $target
   if (current_expr && // see XXX above: this case represents a missed
                       // optimization opportunity
-      *current_expr == e) // we're not nested any deeper than expected 
+      *current_expr == e && // we're not nested any deeper than expected 
+      leftvar) // not unresolved $target; intended sideeffect cannot be elided
     {
-      // clog << "Checking assignment to " << leftvar->name << " at " << *e->tok << endl;
       if (vut.read.find(leftvar) == vut.read.end()) // var never read?
         {
           // NB: Not so fast!  The left side could be an array whose
@@ -2025,6 +2035,8 @@ semantic_pass_optimize1 (systemtap_session& s)
   bool relaxed_p = false;
   while (! relaxed_p)
     {
+      if (pending_interrupts) break;
+
       relaxed_p = true; // until proven otherwise
 
       semantic_pass_opt1 (s, relaxed_p);
@@ -2052,6 +2064,7 @@ semantic_pass_optimize2 (systemtap_session& s)
   bool relaxed_p = false;
   while (! relaxed_p)
     {
+      if (pending_interrupts) break;
       relaxed_p = true; // until proven otherwise
 
       semantic_pass_opt5 (s, relaxed_p);
@@ -2082,12 +2095,16 @@ semantic_pass_types (systemtap_session& s)
   // XXX: maybe convert to exception-based error signalling
   while (1)
     {
+      if (pending_interrupts) break;
+
       iterations ++;
       ti.num_newly_resolved = 0;
       ti.num_still_unresolved = 0;
 
       for (unsigned j=0; j<s.functions.size(); j++)
         {
+          if (pending_interrupts) break;
+
           functiondecl* fn = s.functions[j];
           ti.current_probe = 0;
           ti.current_function = fn;
@@ -2103,6 +2120,8 @@ semantic_pass_types (systemtap_session& s)
 
       for (unsigned j=0; j<s.probes.size(); j++)
         {
+          if (pending_interrupts) break;
+
           derived_probe* pn = s.probes[j];
           ti.current_function = 0;
           ti.current_probe = pn;
@@ -2862,6 +2881,7 @@ typeresolution_info::visit_print_format (print_format* e)
       // First we extract the subsequence of formatting components
       // which are conversions (not just literal string components)
 
+      unsigned expected_num_args = 0;
       std::vector<print_format::format_component> components;
       for (size_t i = 0; i < e->components.size(); ++i)
 	{
@@ -2872,19 +2892,39 @@ typeresolution_info::visit_print_format (print_format* e)
 		   || e->components[i].type == print_format::conv_size)
 	    continue;
 	  components.push_back(e->components[i]);
+	  ++expected_num_args;
+	  if (e->components[i].widthtype == print_format::width_dynamic)
+	    ++expected_num_args;
+	  if (e->components[i].prectype == print_format::prec_dynamic)
+	    ++expected_num_args;
 	}
 
       // Then we check that the number of conversions and the number
       // of args agree.
 
-      if (components.size() != e->args.size())
+      if (expected_num_args != e->args.size())
 	throw semantic_error ("Wrong number of args to formatted print operator",
 			      e->tok);
 
       // Then we check that the types of the conversions match the types
       // of the args.
+      unsigned argno = 0;
       for (size_t i = 0; i < components.size(); ++i)
 	{
+	  // Check the dynamic width, if specified
+	  if (components[i].widthtype == print_format::width_dynamic)
+	    {
+	      check_arg_type (pe_long, e->args[argno]);
+	      ++argno;
+	    }
+
+	  // Check the dynamic precision, if specified
+	  if (components[i].prectype == print_format::prec_dynamic)
+	    {
+	      check_arg_type (pe_long, e->args[argno]);
+	      ++argno;
+	    }
+
 	  exp_type wanted = pe_unknown;
 
 	  switch (components[i].type)
@@ -2906,24 +2946,14 @@ typeresolution_info::visit_print_format (print_format* e)
 	      break;
 
 	    case print_format::conv_string:
+	    case print_format::conv_memory:
 	      wanted = pe_string;
 	      break;
 	    }
 
 	  assert (wanted != pe_unknown);
-
-	  t = wanted;
-	  e->args[i]->visit (this);
-
-	  if (e->args[i]->type == pe_unknown)
-	    {
-	      e->args[i]->type = wanted;
-	      resolved (e->args[i]->tok, wanted);
-	    }
-	  else if (e->args[i]->type != wanted)
-	    {
-	      mismatch (e->args[i]->tok, e->args[i]->type, wanted);
-	    }
+	  check_arg_type (wanted, e->args[argno]);
+	  ++argno;
 	}
     }
   else
@@ -2980,6 +3010,24 @@ typeresolution_info::visit_hist_op (hist_op* e)
 {
   t = pe_stats;
   e->stat->visit (this);
+}
+
+
+void
+typeresolution_info::check_arg_type (exp_type wanted, expression* arg)
+{
+  t = wanted;
+  arg->visit (this);
+
+  if (arg->type == pe_unknown)
+    {
+      arg->type = wanted;
+      resolved (arg->tok, wanted);
+    }
+  else if (arg->type != wanted)
+    {
+      mismatch (arg->tok, arg->type, wanted);
+    }
 }
 
 

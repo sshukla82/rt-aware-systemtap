@@ -1,3 +1,26 @@
+2008-02-27  Martin Hunt  <hunt@redhat.com>
+
+	* sym.h (_stp_module): Add text_size, lock, and unwind data
+	pointer.	
+	* sym.c (_stp_find_module_by_addr): New function.
+	(_stp_kallsyms_lookup): Call _stp_find_module_by_addr().
+	(_stp_get_unwind_info): New.
+	
+	* runtime.h: Move debug macros to debug.h. Include it.
+	* debug.h: New file.
+	* map.c: Update debug calls.
+	* map-gen.c: Update debug calls.
+	* pmap-gen.c: Update debug calls.
+	
+	* mempool.c: New file. 
+	
+2008-02-27  Dave Brolley  <brolley@redhat.com>
+
+	PR5189
+	* vsprintf.c (_stp_vsnprintf): Extract arguments of type int64_t for
+	dynamic width and precision. Implement width and precision correctly for
+	the %b format specifier. Implement the %m specifier.
+
 2008-02-06  Masami Hiramatsu <mhiramat@redhat.com>
 
 	* stack-ia64.c (__stp_show_stack_sym): Skip printing symbol if (ip ==
