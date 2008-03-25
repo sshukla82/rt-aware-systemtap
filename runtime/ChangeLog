@@ -15,6 +15,17 @@
 
 	* utrace.c: New file.
 
+2008-03-17  Eugene Teo  <eteo@redhat.com>
+
+	PR 5947
+	* autoconf-tsc-khz.c: Remove "&& defined(__i386__)" to make the test
+	more pessimistic.
+
+2008-03-14  Masami Hiramatsu <mhiramat@redhat.com>
+
+	PR 3542
+	* autoconf-unregister-kprobes.c : New file.
+
 2008-03-10  Dave Brolley  <brolley@redhat.com>
 
 	PR5189
