@@ -2237,6 +2237,14 @@ typeresolution_info::visit_assignment (assignment *e)
   if (t == pe_stats)
     invalid (e->tok, t);
 
+  vardecl *vd = get_symbol_within_expression (e->left)->referent;
+  if (vd && (e->docstr != ""))
+    {
+      if (vd->docstr != "")
+	vd->docstr += "\\n";
+      vd->docstr += e->docstr;
+    }
+
   if (e->op == "<<<") // stats aggregation
     {
       if (t == pe_string)

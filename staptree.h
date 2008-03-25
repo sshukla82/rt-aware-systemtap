@@ -173,6 +173,8 @@ struct ternary_expression: public expression
 struct assignment: public binary_expression
 {
   void visit (visitor* u);
+  void print (std::ostream& o) const;
+  std::string docstr; // NB: to be propagated to LHS symboldecl
 };
 
 struct symbol;
@@ -384,6 +386,7 @@ struct symboldecl // unique object per (possibly implicit)
   std::string name;
   exp_type type;
   symboldecl ();
+  std::string docstr;
   virtual ~symboldecl ();
   virtual void print (std::ostream &o) const = 0;
   virtual void printsig (std::ostream &o) const = 0;
@@ -590,6 +593,7 @@ struct probe
   std::vector<probe_point*> locations;
   block* body;
   const token* tok;
+  std::string docstr;
   std::vector<vardecl*> locals;
   std::vector<vardecl*> unused_locals;
   probe ();

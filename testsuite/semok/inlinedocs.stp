@@ -1,0 +1,14 @@
+#! stap -up2
+global p @@ "p is a global"
+	 @@ "very global", q = 4 @@ "q is also global",
+	r[200] @@ "as is r" @@ "really",
+	z = "z string" @@ "Z IS A STRING!"
+function dummy:long @@ "dummy function" () {return p;}
+function dummy2:long @@ "dummy2 function" @@ "line2\nline3" @@ "line4" (
+	a @@ "a",
+	b:long @@ "b") {return a+b;}
+
+probe begin @@ "a probe" {}
+probe foo = begin,end @@ "another probe" @@ "multiline" {}
+probe error { r[4] = 4 @@ "an assignment"
+	      value2 = 5 @@ "another" @@ "assmt" }

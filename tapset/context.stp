@@ -7,13 +7,20 @@
 // Public License (GPL); either version 2, or (at your option) any
 // later version.
 
-function print_regs () %{
-	if (CONTEXT->regs) {
-		_stp_print_regs (CONTEXT->regs);
+function print_regs
+    @@ "Print a register dump (for kprobes, uprobes, profiling)."
+    () 
+%{
+    	if (CONTEXT->regs) {
+	   	_stp_print_regs (CONTEXT->regs);
 	}
 %}
 
-function print_backtrace () %{
+function print_backtrace
+    @@ "Equivalent to print_stack(backtrace()), except that"
+    @@ "deeper stack nesting may be supported."
+    () 
+%{
 	if (CONTEXT->regs) {
 		_stp_stack_print(CONTEXT->regs, 1, CONTEXT->pi);
 	} else {
@@ -21,14 +28,21 @@ function print_backtrace () %{
 	}
 %}
 
-function backtrace:string () %{ /* pure */
+function backtrace:string 
+    @@ "Return a string of hex addresses that are a backtrace of the stack."
+    @@ "It may be truncated due to maximum string length."
+    ()
+%{ /* pure */
 	if (CONTEXT->regs)
 		_stp_stack_snprint (THIS->__retvalue, MAXSTRINGLEN, CONTEXT->regs, 0, CONTEXT->pi);	
 	else 
 		strlcpy (THIS->__retvalue, "", MAXSTRINGLEN);
 %}
 
-function execname:string () %{ /* pure */
+function execname:string 
+    @@ "Return the name of the current process."
+    ()
+%{ /* pure */
 	strlcpy (THIS->__retvalue, current->comm, MAXSTRINGLEN);
 %}
 

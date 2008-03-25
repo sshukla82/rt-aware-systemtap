@@ -1,5 +1,5 @@
 // recursive descent parser for systemtap scripts
-// Copyright (C) 2005-2007 Red Hat Inc.
+// Copyright (C) 2005-2008 Red Hat Inc.
 // Copyright (C) 2006 Intel Corporation.
 // Copyright (C) 2007 Bull S.A.S
 //
@@ -24,9 +24,6 @@
 #include <sstream>
 #include <cstring>
 #include <cctype>
-extern "C" {
-#include <fnmatch.h>
-}
 
 using namespace std;
 
@@ -176,16 +173,10 @@ bool eval_pp_conditional (systemtap_session& s,
       
       if (! (r->type == tok_string))
         throw parse_error ("expected string literal", r);
-
-      string target = (l->content == "kernel_vr" ? 
-                       target_kernel_vr.c_str() :
-                       target_kernel_v.c_str());
-      string query = r->content;
-      bool rhs_wildcard = (strpbrk (query.c_str(), "*?[") != 0);
-
+      string query_kernel_vr = r->content;
+      
       // collect acceptable strverscmp results.
       int rvc_ok1, rvc_ok2;
-      bool wc_ok = false;
       if (op->type == tok_operator && op->content == "<=")
         { rvc_ok1 = -1; rvc_ok2 = 0; }
       else if (op->type == tok_operator && op->content == ">=")
@@ -195,30 +186,21 @@ bool eval_pp_conditional (systemtap_session& s,
       else if (op->type == tok_operator && op->content == ">")
         { rvc_ok1 = 1; rvc_ok2 = 1; }
       else if (op->type == tok_operator && op->content == "==")
-        { rvc_ok1 = 0; rvc_ok2 = 0; wc_ok = true; }
+        { rvc_ok1 = 0; rvc_ok2 = 0; }
       else if (op->type == tok_operator && op->content == "!=")
-        { rvc_ok1 = -1; rvc_ok2 = 1; wc_ok = true; }
+        { rvc_ok1 = -1; rvc_ok2 = 1; }
       else
         throw parse_error ("expected comparison operator", op);
-
-      if ((!wc_ok) && rhs_wildcard)
-        throw parse_error ("wildcard not allowed with order comparison operators", op);
-
-      if (rhs_wildcard)
-        {
-          int rvc_result = fnmatch (query.c_str(), target.c_str(),
-                                    FNM_NOESCAPE); // spooky
-          bool badness = (rvc_result == 0) ^ (op->content == "==");
-          return !badness;
-        }
-      else
-        {
-          int rvc_result = strverscmp (target.c_str(), query.c_str());
-          // normalize rvc_result
-          if (rvc_result < 0) rvc_result = -1;
-          if (rvc_result > 0) rvc_result = 1;
-          return (rvc_result == rvc_ok1 || rvc_result == rvc_ok2);
-        }
+      
+      int rvc_result = strverscmp ((l->content == "kernel_vr" ? 
+                                    target_kernel_vr.c_str() :
+                                    target_kernel_v.c_str()),
+                                   query_kernel_vr.c_str());
+      // normalize rvc_result
+      if (rvc_result < 0) rvc_result = -1;
+      if (rvc_result > 0) rvc_result = 1;
+      
+      return (rvc_result == rvc_ok1 || rvc_result == rvc_ok2);
     }
   else if (l->type == tok_identifier && l->content == "arch")
     {
@@ -227,15 +209,11 @@ bool eval_pp_conditional (systemtap_session& s,
         throw parse_error ("expected string literal", r);
       string query_architecture = r->content;
       
-      int nomatch = fnmatch (query_architecture.c_str(),
-                             target_architecture.c_str(),
-                             FNM_NOESCAPE); // still spooky
-
       bool result;
       if (op->type == tok_operator && op->content == "==")
-        result = !nomatch;
+        result = target_architecture == query_architecture;
       else if (op->type == tok_operator && op->content == "!=")
-        result = nomatch;
+        result = target_architecture != query_architecture;
       else
         throw parse_error ("expected '==' or '!='", op);
       
@@ -266,8 +244,6 @@ bool eval_pp_conditional (systemtap_session& s,
       // normalize rvc_result
       if (rvc_result < 0) rvc_result = -1;
       if (rvc_result > 0) rvc_result = 1;
-
-      // NB: no wildcarding option here
 
       return (rvc_result == rvc_ok1 || rvc_result == rvc_ok2);
     }
@@ -669,8 +645,9 @@ lexer::scan (bool wildcard, bool expand_args)
       goto semiskip;
     }
 
-  else if (isalpha (c) || c == '$' || c == '@' || c == '_' ||
-	   (wildcard && c == '*'))
+  else if (isalpha (c) || c == '$'
+	   || (c == '@' && c2 != '@') // XXX: what identifiers use @foobar?
+	   || c == '_' || (wildcard && c == '*'))
     {
       n->type = tok_identifier;
       n->content = (char) c;
@@ -874,6 +851,7 @@ lexer::scan (bool wildcard, bool expand_args)
                s2 == "->" ||
                s2 == "<<" ||
                s2 == ">>" ||
+               s2 == "@@" ||
                // preprocessor tokens
                s2 == "%(" ||
                s2 == "%?" ||
@@ -908,8 +886,6 @@ parser::parse ()
   stapfile* f = new stapfile;
   f->name = input_name;
 
-  bool empty = true;
-
   while (1)
     {
       try
@@ -918,7 +894,6 @@ parser::parse ()
 	  if (! t) // nice clean EOF
 	    break;
 
-          empty = false;
 	  if (t->type == tok_keyword && t->content == "probe")
 	    {
 	      context = con_probe;
@@ -970,13 +945,7 @@ parser::parse ()
         }
     }
 
-  if (empty)
-    {
-      cerr << "Input file '" << input_name << "' is empty or missing." << endl;
-      delete f;
-      return 0;
-    }
-  else if (num_errors > 0)
+  if (num_errors > 0)
     {
       cerr << num_errors << " parse error(s)." << endl;
       delete f;
@@ -999,7 +968,7 @@ parser::parse_probe (std::vector<probe *> & probe_ret,
   vector<probe_point *> locations;
 
   bool equals_ok = true;
-
+  string docstr;
   int epilogue_alias = 0;
 
   while (1)
@@ -1029,7 +998,22 @@ parser::parse_probe (std::vector<probe *> & probe_ret,
           next ();
           continue;
         }
-      else if (t && t->type == tok_operator && t->content == "{")
+      else if (t && t->type == tok_operator && t->content == "@@")
+	{
+	  do
+	    { // consume consecutive @@ "foo bar" docstrings
+	      next (); // swallow @@ itself
+	      const token* t1 = next (); 
+	      if (! (t1 && t1->type == tok_string))
+		throw parse_error ("expected documentation string");
+	      if (docstr != "") docstr += "\\n";
+	      docstr += t1->content;
+	      t = peek ();
+	    } 
+	  while (t && t->type == tok_operator && t->content == "@@");
+	  // fall through
+	}
+      if (t && t->type == tok_operator && t->content == "{")
         {
           locations.push_back(pp);
           break;
@@ -1045,17 +1029,16 @@ parser::parse_probe (std::vector<probe *> & probe_ret,
       p->locations = locations;
       p->body = parse_stmt_block ();
       p->privileged = privileged;
+      p->docstr = docstr;
       probe_ret.push_back (p);
     }
   else
     {
       probe_alias* p = new probe_alias (aliases);
-      if(epilogue_alias)
-	p->epilogue_style = true;
-      else
-	p->epilogue_style = false;
+      p->epilogue_style = epilogue_alias;
       p->tok = t0;
       p->locations = locations;
+      p->docstr = docstr;
       p->body = parse_stmt_block ();
       p->privileged = privileged;
       alias_ret.push_back (p);
@@ -1215,6 +1198,21 @@ parser::parse_global (vector <vardecl*>& globals, vector<probe*>&)
 	  t = peek ();
 	}
 
+      if (t && t->type == tok_operator && t->content == "@@")
+	{
+	  do
+	    { // consume consecutive @@ "foo bar" docstrings
+	      next (); // swallow @@ itself
+	      const token* t1 = next (); 
+	      if (! (t1 && t1->type == tok_string))
+		throw parse_error ("expected documentation string");
+	      if (d->docstr != "") d->docstr += "\\n";
+	      d->docstr += t1->content;
+	      t = peek ();
+	    } 
+	  while (t && t->type == tok_operator && t->content == "@@");
+	}
+      
       if (t && t->type == tok_operator && t->content == ",") // next global
 	{
 	  next ();
@@ -1261,6 +1259,21 @@ parser::parse_functiondecl (std::vector<functiondecl*>& functions)
       t = next ();
     }
 
+  if (t && t->type == tok_operator && t->content == "@@")
+    {
+      do
+	{ // consume consecutive @@ "foo bar" docstrings
+	  // next (); // @@ itself is already swallowed
+	  const token* t1 = next (); 
+	  if (! (t1 && t1->type == tok_string))
+	    throw parse_error ("expected documentation string");
+	  if (fd->docstr != "") fd->docstr += "\\n";
+	  fd->docstr += t1->content;
+	  t = next ();
+	} 
+      while (t && t->type == tok_operator && t->content == "@@");
+    }
+
   if (! (t->type == tok_operator && t->content == "("))
     throw parse_error ("expected '('");
 
@@ -1290,6 +1303,22 @@ parser::parse_functiondecl (std::vector<functiondecl*>& functions)
 	  
 	  t = next ();
 	}
+      
+      if (t && t->type == tok_operator && t->content == "@@")
+	{
+	  do
+	    { // consume consecutive @@ "foo bar" docstrings
+	      // next (); @@ itself is already swallowed
+	      const token* t1 = next (); 
+	      if (! (t1 && t1->type == tok_string))
+		throw parse_error ("expected documentation string");
+	      if (vd->docstr != "") vd->docstr += "\\n";
+	      vd->docstr += t1->content;
+	      t = next ();
+	    } 
+	  while (t && t->type == tok_operator && t->content == "@@");
+	}
+      
       if (t->type == tok_operator && t->content == ")")
 	break;
       if (t->type == tok_operator && t->content == ",")
@@ -1383,10 +1412,11 @@ parser::parse_probe_point ()
 
       if (t && t->type == tok_operator 
           && (t->content == "{" || t->content == "," ||
-              t->content == "=" || t->content == "+=" ))
+              t->content == "=" || t->content == "+=" ||
+	      t->content == "@@"))
         break;
       
-      throw parse_error ("expected one of '. , ( ? ! { = +='");
+      throw parse_error ("expected one of '. , ( ? ! { = += @@'");
     }
 
   return pl;
@@ -1784,6 +1814,23 @@ parser::parse_assignment ()
       e->tok = t;
       next ();
       e->right = parse_expression ();
+
+      t = peek ();
+      if (t && t->type == tok_operator && t->content == "@@")
+	{
+	  do
+	    { // consume consecutive @@ "foo bar" docstrings
+	      next (); // swallow @@ itself
+	      const token* t1 = next (); 
+	      if (! (t1 && t1->type == tok_string))
+		throw parse_error ("expected documentation string");
+	      if (e->docstr != "") e->docstr += "\\n";
+	      e->docstr += t1->content;
+	      t = peek ();
+	    } 
+	  while (t && t->type == tok_operator && t->content == "@@");
+	}
+      
       op1 = e;
     }
 

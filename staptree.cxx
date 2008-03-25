@@ -221,6 +221,15 @@ void binary_expression::print (ostream& o) const
     << " (" << *right << ")";
 }
 
+void assignment::print (ostream& o) const
+{
+  o << " (" << *left << ") " 
+    << op 
+    << " (" << *right << ")";
+  if (docstr != "")
+    o << " @@ \"" << docstr << "\" ";
+}
+
 
 void unary_expression::print (ostream& o) const
 {
@@ -289,6 +298,8 @@ void vardecl::print (ostream& o) const
       o << " = ";
       init->print(o);
     }
+  if (docstr != "") 
+    o << " @@ \"" << docstr << "\" ";
 }
 
 
@@ -310,7 +321,10 @@ void vardecl::printsig (ostream& o) const
 
 void functiondecl::print (ostream& o) const
 {
-  o << "function " << name << " (";
+  o << "function " << name;
+  if (docstr != "") 
+    o << " @@ \"" << docstr << "\" ";
+  o << " (";
   for (unsigned i=0; i<formal_args.size(); i++)
     o << (i>0 ? ", " : "") << *formal_args[i];
   o << ")" << endl;
@@ -322,10 +336,10 @@ void functiondecl::printsig (ostream& o) const
 {
   o << name << ":" << type << " (";
   for (unsigned i=0; i<formal_args.size(); i++)
-    o << (i>0 ? ", " : "")
-      << *formal_args[i]
-      << ":"
-      << formal_args[i]->type;
+    {
+      o << (i>0 ? ", " : "");
+      formal_args[i]->printsig (o);
+    }
   o << ")";
 }
 
@@ -888,6 +902,8 @@ void probe::print (ostream& o) const
 {
   o << "probe ";
   printsig (o);
+  if (docstr != "") 
+    o << " @@ \"" << docstr << "\" ";
   o << *body;
 }
 

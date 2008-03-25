@@ -73,6 +73,9 @@ usage (systemtap_session& s, int exitcode)
     << "   -u         unoptimized translation" << (s.unoptimized ? " [set]" : "") << endl
     << "   -w         suppress warnings" << (s.suppress_warnings ? " [set]" : "") << endl
     << "   -g         guru mode" << (s.guru_mode ? " [set]" : "") << endl
+    << "   -L CLASS   select probe/function/global listings" 
+    << s.list_class << endl
+    << "   -l PATTERN listing mode & pattern " << s.list_pattern << endl
     << "   -P         prologue-searching for function probes" 
     << (s.prologue_searching ? " [set]" : "") << endl
     << "   -b         bulk (percpu file) mode" << (s.bulk_mode ? " [set]" : "") << endl
@@ -185,6 +188,16 @@ printscript(systemtap_session& s, ostream& o)
     }
 }
 
+
+static void
+liststuff(systemtap_session& /*s*/, ostream& /*o*/)
+{
+  // Listing works in one of three modes: probe, function, or global,
+  // as identified in the s.cmdline_script
+}
+
+
+
 int
 main (int argc, char * const argv [])
 {
@@ -193,6 +206,7 @@ main (int argc, char * const argv [])
   bool have_script = false;
   bool release_changed = false;
   bool save_module = false;
+  bool list_mode = false;
 
   // Initialize defaults
   systemtap_session s;
@@ -204,6 +218,8 @@ main (int argc, char * const argv [])
   s.timing = false;
   s.guru_mode = false;
   s.bulk_mode = false;
+  s.list_class = "probe";
+  s.list_pattern = "";
   s.unoptimized = false;
   s.suppress_warnings = false;
 
@@ -277,7 +293,7 @@ main (int argc, char * const argv [])
   while (true)
     {
       // NB: also see find_hash(), usage(), switch stmt below, stap.1 man page
-      int grc = getopt (argc, argv, "hVMvtp:I:e:o:R:r:m:kgPc:x:D:bs:uqw");
+      int grc = getopt (argc, argv, "hVMvtp:I:e:o:R:r:m:kgPc:x:D:bs:uqwl:");
       if (grc < 0)
         break;
       switch (grc)
@@ -325,6 +341,31 @@ main (int argc, char * const argv [])
           cmdline_script = string (optarg);
           have_script = true;
           break;
+
+        case 'l':
+	  if (have_script)
+	    {
+	      cerr << "List mode cannot be used for script execution"
+		   << endl;
+	      usage (s, 1);
+	    }
+	  s.list_pattern = string(optarg);
+	  list_mode = true; // changes last_pass etc. interpretation
+	  s.unoptimized = true;
+	  have_script = true;
+	  break;
+
+        case 'L':
+	  s.list_class = string(optarg);
+	  if (!(s.list_class == "probe" ||
+		s.list_class == "function" ||
+		s.list_class == "global"))
+	    // idea: perhaps use suffixes for formatting specifications:
+	    // "probe.man" for stapprobes* man page generation
+	    {
+	      cerr << "List class must be one of probe, function, or global." << endl;
+	      usage (s, 1);
+	    }
 
         case 'o':
           s.output_file = string (optarg);
@@ -500,6 +541,8 @@ main (int argc, char * const argv [])
   // cause us to do unintended things).
   rc = unsetenv("IFS") || unsetenv("CDPATH") || unsetenv("ENV")
       || unsetenv("BASH_ENV");
+  // XXX: is this enough, considering subsequent invocation of kbuild,
+  // gcc, staprun?
   if (rc)
     {
       const char* e = strerror (errno);
@@ -549,7 +592,7 @@ main (int argc, char * const argv [])
   // PASS 1a: PARSING USER SCRIPT
 
   struct stat user_file_stat;
-  int user_file_stat_rc = -1;
+  int user_file_stat_rc = 0;
 
   if (script_file == "-")
     {
@@ -567,8 +610,15 @@ main (int argc, char * const argv [])
       s.user_file = parser::parse (s, ii, s.guru_mode);
     }
   if (s.user_file == 0)
-    // syntax errors already printed
-    rc ++;
+    rc ++;    // syntax errors already printed
+  if (user_file_stat_rc != 0)
+    {
+      // XXX: The parser might have encountered some I/O error
+      // that is lost by the time we try to stat().
+      cerr << "Error " << user_file_stat_rc << " opening script file '" << script_file << "'"
+	   << ": " << strerror(errno) << endl;
+      rc ++;
+    }
 
   // Construct arch / kernel-versioning search path
   vector<string> version_suffixes;
@@ -691,7 +741,9 @@ main (int argc, char * const argv [])
   // PASS 2: ELABORATION
   rc = semantic_pass (s);
 
-  if (rc == 0 && s.last_pass == 2)
+  if (rc == 0 && s.list_mode)
+    liststuff(s, cout);
+  else if (rc == 0 && s.last_pass == 2)
     printscript(s, cout);
 
   times (& tms_after);

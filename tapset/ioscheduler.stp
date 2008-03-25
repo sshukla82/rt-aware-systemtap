@@ -11,25 +11,26 @@
 #include <linux/elevator.h>
 %}
 
-/* when a request is retrieved from request queue */
 probe ioscheduler.elv_next_request
 	=  kernel.function("elv_next_request")
+        @@ "Probe the retrieval of a I/O request from request queue."
 {
-%( kernel_v >= "2.6.10" %?
-	elevator_name = kernel_string($q->elevator->elevator_type->elevator_name)
-%:
-	elevator_name = kernel_string($q->elevator->elevator_name)
-%)
+        elevator_name =
+        %( kernel_v >= "2.6.10" %?
+           kernel_string($q->elevator->elevator_type->elevator_name) %:
+           kernel_string($q->elevator->elevator_name) %)
+        @@ "The elevator name."
 }
 
 probe ioscheduler.elv_next_request.return
 	= kernel.function("elv_next_request").return
+        @@ "Probe the return from a I/O request retrieval."
 {
 	if($return == 0)  {
-		req = 0
-		req_flags = 0
-		disk_major = -1
-		disk_minor = -1
+		req = 0          @@ "Address of the request."
+		req_flags = 0    @@ "Request flags."
+		disk_major = -1  @@ "Disk major number of the request."
+		disk_minor = -1  @@ "Disk minor number of the request."
 	} else {
 		req = $return
 %( kernel_v >= "2.6.19" %?
@@ -50,15 +51,17 @@ probe ioscheduler.elv_next_request.return
 /* when a request is added to the request queue */
 probe ioscheduler.elv_add_request
 	= kernel.function("__elv_add_request")
+        @@ "Probe adding a request into the I/O request queue."
 {
 %( kernel_v >= "2.6.10" %?
 	elevator_name = kernel_string($q->elevator->elevator_type->elevator_name)
 %:
 	elevator_name = kernel_string($q->elevator->elevator_name)
-%)
+%)      @@ "The elevator name."
+
 	if($rq == 0)  {
-		disk_major = -1
-		disk_minor = -1
+		disk_major = -1   @@ "Disk major number of the request."
+		disk_minor = -1   @@ "Disk minor number of the request."
 	} else {
 		if($rq->rq_disk == 0)  {
 			disk_major = -1
@@ -69,12 +72,12 @@ probe ioscheduler.elv_add_request
 		}
 	}
 
-	req = $rq
+	req = $rq   @@ "Address of the request."
 %( kernel_v >= "2.6.19" %?
 	req_flags = $rq==0? 0:$rq->cmd_flags
 %:
 	req_flags = $rq==0? 0:$rq->flags
-%)
+%)      @@ "Request flags."
 }
 
 /* when a request is completed */
