@@ -4527,6 +4527,7 @@ utrace_derived_probe_group::emit_module_decls (systemtap_session& s)
 //  s.op->newline() << "unsigned registered_p;";
 //  s.op->newline() << "unsigned registered_p:1;";
   s.op->newline() << "struct utrace_engine_ops ops;";
+  s.op->newline() << "unsigned long flags;";
   s.op->newline(-1) << "};";
 
   s.op->newline() << "static u32 stap_utrace_probe_death(struct utrace_attached_engine *engine, struct task_struct *tsk) {";
@@ -4567,7 +4568,7 @@ utrace_derived_probe_group::emit_module_decls (systemtap_session& s)
   s.op->newline(-1) << "}";
   s.op->newline() << "else {";
   s.op->indent(1);
-  s.op->newline() << "utrace_set_flags(tsk, engine, UTRACE_EVENT(DEATH));";
+  s.op->newline() << "utrace_set_flags(tsk, engine, p->flags);";
   s.op->newline(-1) << "}";
   s.op->newline(-1) << "}";
   s.op->newline() << "else {";
@@ -4597,6 +4598,7 @@ utrace_derived_probe_group::emit_module_decls (systemtap_session& s)
 //	      s.op->line() << " .process=" << p->process << ",";
 //	      if (p->return_p) s.op->line() << " .return_p=1,";
 	      s.op->line() << " .ops={ .report_death=stap_utrace_probe_death },";
+	      s.op->line() << " .flags=(UTRACE_EVENT(DEATH)),";
 	      s.op->line() << " },";
 	    }
 	}
@@ -6885,8 +6887,10 @@ register_standard_tapsets(systemtap_session & s)
     ->bind_num(TOK_STATEMENT)->bind(TOK_ABSOLUTE)->bind(TOK_RETURN)
     ->bind(new uprobe_builder ());
 
-  s.pattern_root->bind_str(TOK_PROCESS)->bind(new utrace_builder ());
-  s.pattern_root->bind_num(TOK_PROCESS)->bind(new utrace_builder ());
+  s.pattern_root->bind_str(TOK_PROCESS)->bind("death")
+      ->bind(new utrace_builder ());
+  s.pattern_root->bind_num(TOK_PROCESS)->bind("death")
+      ->bind(new utrace_builder ());
 
   // marker-based parts
   s.pattern_root->bind("kernel")->bind_str("mark")->bind(new mark_builder());

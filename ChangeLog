@@ -1,6 +1,11 @@
 2008-03-25  David Smith  <dsmith@redhat.com>
 
 	* tapsets.cxx (utrace_derived_probe_group::emit_module_decls):
+	Added configurable flags to specify probe events.
+	(register_standard_tapsets): Changed 'probe process("/bin/ls")' to
+	'probe process("/bin/ls").death'.
+
+	* tapsets.cxx (utrace_derived_probe_group::emit_module_decls):
 	Moved stap_utrace_task_finder_clone(),
 	stap_utrace_task_finder_exec(), and
 	stap_utrace_start_task_finder() to runtime/utrace.c.
