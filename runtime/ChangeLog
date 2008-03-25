@@ -1,3 +1,10 @@
+2008-03-25  David Smith  <dsmith@redhat.com>
+
+	* utrace.c (stap_utrace_task_finder_clone): Moved here from
+	tapsets.cxx.
+	(stap_utrace_task_finder_exec): Ditto.
+	(stap_utrace_start_task_finder): Ditto.
+
 2008-03-24  David Smith  <dsmith@redhat.com>
 
 	* utrace.c (stap_utrace_detach_ops): Moved function here from
