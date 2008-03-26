@@ -1,3 +1,7 @@
+2008-03-26  David Smith  <dsmith@redhat.com>
+
+	* utrace.c: Revamped probe registration interface.
+
 2008-03-25  David Smith  <dsmith@redhat.com>
 
 	* utrace.c (stap_utrace_task_finder_clone): Moved here from

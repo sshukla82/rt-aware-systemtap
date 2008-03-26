@@ -1,3 +1,9 @@
+2008-03-26  David Smith  <dsmith@redhat.com>
+
+	* tapsets.cxx (utrace_derived_probe_group::emit_module_decls):
+	Revamped probe registration interface.
+	(emit_module_init): Ditto.
+
 2008-03-25  David Smith  <dsmith@redhat.com>
 
 	* tapsets.cxx (utrace_derived_probe_group::emit_module_decls):
