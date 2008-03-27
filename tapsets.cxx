@@ -4577,11 +4577,12 @@ utrace_derived_probe_group::emit_module_decls (systemtap_session& s)
   s.op->newline(-1) << "}";
   s.op->newline(-1) << "}";
 
+  s.op->newline() << "struct stap_utrace_probe stap_utrace_probes[] = {";
+  s.op->indent(1);
+
   // Set up 'process(PATH)' probes
   if (! probes_by_path.empty())
     {
-      s.op->newline() << "struct stap_utrace_probe stap_utrace_path_probes[] = {";
-      s.op->indent(1);
       for (p_b_path_iterator it = probes_by_path.begin();
 	   it != probes_by_path.end(); it++)
         {
@@ -4592,26 +4593,43 @@ utrace_derived_probe_group::emit_module_decls (systemtap_session& s)
 	      s.op->line() << " .tgt={";
 	      s.op->line() << " .pathname=\"" << it->first << "\",";
 	      s.op->line() << " .pathlen=" << it->first.length() << ",";
+	      s.op->line() << " .pid=0,";
 	      s.op->line() << " .callback=&_stp_utrace_probe_cb,";
 	      s.op->line() << " },";
 	      s.op->line() << " .pp=" << lex_cast_qstring (*p->sole_location()) << ",";
 	      s.op->line() << " .ph=&" << p->name << ",";
-//	      s.op->line() << " .address=0x" << hex << p->address << dec << "UL,";
-//	      s.op->line() << " .process=" << p->process << ",";
-//	      if (p->return_p) s.op->line() << " .return_p=1,";
 	      s.op->line() << " .ops={ .report_death=stap_utrace_probe_death },";
 	      s.op->line() << " .flags=(UTRACE_EVENT(DEATH)),";
 	      s.op->line() << " },";
 	    }
 	}
-      s.op->newline(-1) << "};";
     }
 
   // Set up 'process(PID)' probes
   if (! probes_by_pid.empty())
     {
-      throw semantic_error ("process(PID) probes not implemented");
+      for (p_b_pid_iterator it = probes_by_pid.begin();
+	   it != probes_by_pid.end(); it++)
+        {
+	  for (unsigned i = 0; i < it->second.size(); i++)
+	    {
+	      utrace_derived_probe *p = it->second[i];
+	      s.op->newline() << "{";
+	      s.op->line() << " .tgt={";
+	      s.op->line() << " .pathname=NULL,";
+	      s.op->line() << " .pathlen=0,";
+	      s.op->line() << " .pid=" << p->pid << ",";
+	      s.op->line() << " .callback=&_stp_utrace_probe_cb,";
+	      s.op->line() << " },";
+	      s.op->line() << " .pp=" << lex_cast_qstring (*p->sole_location()) << ",";
+	      s.op->line() << " .ph=&" << p->name << ",";
+	      s.op->line() << " .ops={ .report_death=stap_utrace_probe_death },";
+	      s.op->line() << " .flags=(UTRACE_EVENT(DEATH)),";
+	      s.op->line() << " },";
+	    }
+	}
     }
+  s.op->newline(-1) << "};";
 
 #if 0
   s.op->newline();
@@ -4646,15 +4664,11 @@ utrace_derived_probe_group::emit_module_init (systemtap_session& s)
   s.op->newline();
   s.op->newline() << "/* ---- utrace probes ---- */";
 
-  // Set up 'process(PATH)' probes
-  if (! probes_by_path.empty())
-    {
-      s.op->newline() << "for (i=0; i<" << num_probes << "; i++) {";
-      s.op->indent(1);
-      s.op->newline() << "struct stap_utrace_probe *p = &stap_utrace_path_probes[i];";
-      s.op->newline() << "stap_register_task_finder_target(&p->tgt);";
-      s.op->newline(-1) << "}";
-    }  
+  s.op->newline() << "for (i=0; i<" << num_probes << "; i++) {";
+  s.op->indent(1);
+  s.op->newline() << "struct stap_utrace_probe *p = &stap_utrace_probes[i];";
+  s.op->newline() << "stap_register_task_finder_target(&p->tgt);";
+  s.op->newline(-1) << "}";
 
   s.op->newline() << "_stp_dbug(__FUNCTION__, __LINE__, \"calling stap_utrace_start_task_finder...\");";
   s.op->newline() << "rc = stap_utrace_start_task_finder();";

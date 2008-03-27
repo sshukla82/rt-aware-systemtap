@@ -1,3 +1,8 @@
+2008-03-27  David Smith  <dsmith@redhat.com>
+
+	* utrace.c (stap_utrace_start_task_finder): Handles pid-based
+	probes.
+
 2008-03-26  David Smith  <dsmith@redhat.com>
 
 	* utrace.c: Revamped probe registration interface.

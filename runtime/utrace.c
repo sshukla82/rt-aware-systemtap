@@ -13,6 +13,7 @@ struct stap_task_finder_target {
 	struct list_head callback_list;
     	const char *pathname;
 	size_t pathlen;
+	pid_t pid;
 	stap_utrace_callback callback;
 };
 
@@ -26,11 +27,16 @@ stap_register_task_finder_target(struct stap_task_finder_target *new_tgt)
 	struct stap_task_finder_target *tgt = NULL;
 	int found_node = 0;
 
-	// Search the list for an existing entry for pathname.
+	// Search the list for an existing entry for pathname/pid.
 	list_for_each(node, &_stp_task_finder_list) {
 		tgt = list_entry(node, struct stap_task_finder_target, list);
-		if (tgt != NULL && tgt->pathlen == new_tgt->pathlen
-		    && strcmp(tgt->pathname, new_tgt->pathname) == 0) {
+		if (tgt != NULL
+		    /* pathname-based target */
+		    && ((new_tgt->pathlen > 0
+			 && tgt->pathlen == new_tgt->pathlen
+			 && strcmp(tgt->pathname, new_tgt->pathname) == 0)
+			/* pid-based target */
+			|| (new_tgt->pid != 0 && tgt->pid == new_tgt->pid))) {
 			found_node = 1;
 			break;
 		}
@@ -63,8 +69,12 @@ stap_notify_cleanup(void)
 		if (tgt == NULL)
 			continue;
 
-		_stp_dbug(__FUNCTION__, __LINE__, "cleaning up '%s' entry",
-			  tgt->pathname);
+		if (tgt->pathlen > 0)
+			_stp_dbug(__FUNCTION__, __LINE__,
+				  "cleaning up '%s' entry", tgt->pathname);
+		else
+			_stp_dbug(__FUNCTION__, __LINE__,
+				  "cleaning up pid %d entry", tgt->pid);
 		list_for_each_safe(cb_node, cb_next,
 				   &tgt->callback_list_head) {
 			struct stap_task_finder_target *cb_tgt;
@@ -201,7 +211,8 @@ stap_utrace_task_finder_exec(struct utrace_attached_engine *engine,
 		list_for_each(tgt_node, &_stp_task_finder_list) {
 			tgt = list_entry(tgt_node,
 					 struct stap_task_finder_target, list);
-			if (tgt->pathlen == filelen
+			if (tgt != NULL && tgt->pathlen > 0
+			    && tgt->pathlen == filelen
 			    && strcmp(tgt->pathname, bprm->filename) == 0) {
 				_stp_dbug(__FUNCTION__, __LINE__,
 					  "found a match!");
@@ -249,6 +260,8 @@ stap_utrace_start_task_finder(void)
 		struct utrace_attached_engine *engine;
 		struct mm_struct *mm;
 		char *mmpath;
+		size_t mmpathlen;
+		struct list_head *tgt_node;
 
 		mm = get_task_mm(tsk);
 		if (! mm) {
@@ -279,7 +292,7 @@ stap_utrace_start_task_finder(void)
 		_stp_dbug(__FUNCTION__, __LINE__, "attach to pid %d",
 			  (int)tsk->pid);
 
-		/* Check the thread's exe's path against our list. */
+		/* Check the thread's exe's path/pid against our list. */
 		mmpath = stap_utrace_get_mm_path(mm, mmpath_buf, PATH_MAX);
 		mmput(mm);		/* We're done with mm */
 		if (IS_ERR(mmpath)) {
@@ -287,43 +300,38 @@ stap_utrace_start_task_finder(void)
 			error_fmt = "Unable to get path (error %d) for pid %d";
 			break;
 		}
-		else {
-			size_t mmpathlen = strlen(mmpath);
-			struct list_head *tgt_node;
-			struct stap_task_finder_target *tgt;
-			int found_node = 0;
 
-			_stp_dbug(__FUNCTION__, __LINE__,
-				  "pid %d path: \"%s\"", (int)tsk->pid, mmpath);
-			list_for_each(tgt_node, &_stp_task_finder_list) {
-				tgt = list_entry(tgt_node,
-						 struct stap_task_finder_target,
-						 list);
-				if (tgt != NULL && tgt->pathlen == mmpathlen
-				    && strcmp(tgt->pathname, mmpath) == 0) {
-					_stp_dbug(__FUNCTION__, __LINE__,
-						  "found a match!");
-					found_node = 1;
-					break;
-				}
-			}
-			if (found_node) {
-				struct list_head *cb_node;
-				list_for_each(cb_node, &tgt->callback_list_head) {
-					struct stap_task_finder_target *cb_tgt;
-					cb_tgt = list_entry(cb_node,
-							    struct stap_task_finder_target,
-							    callback_list);
-					if (cb_tgt == NULL
-					    || cb_tgt->callback == NULL)
-						continue;
+		mmpathlen = strlen(mmpath);
+		_stp_dbug(__FUNCTION__, __LINE__, "pid %d path: \"%s\"",
+			  (int)tsk->pid, mmpath);
+		list_for_each(tgt_node, &_stp_task_finder_list) {
+			struct stap_task_finder_target *tgt;
+			struct list_head *cb_node;
+
+			tgt = list_entry(tgt_node,
+					 struct stap_task_finder_target, list);
+			if (tgt == NULL)
+				continue;
+			/* pathname-based target */
+			else if (tgt->pathlen > 0
+				 && (tgt->pathlen != mmpathlen
+				     || strcmp(tgt->pathname, mmpath) != 0))
+				 continue;
+			/* pid-based target */
+			else if (tgt->pid != 0 && tgt->pid != tsk->pid)
+				continue;
+
+			_stp_dbug(__FUNCTION__, __LINE__, "found a match!");
+			list_for_each(cb_node, &tgt->callback_list_head) {
+				struct stap_task_finder_target *cb_tgt;
+				cb_tgt = list_entry(cb_node,
+						    struct stap_task_finder_target,
+						    callback_list);
+				if (cb_tgt == NULL || cb_tgt->callback == NULL)
+					continue;
 					
-					cb_tgt->callback(tsk, 1, cb_tgt);
-				}
+				cb_tgt->callback(tsk, 1, cb_tgt);
 			}
-		}
-		if (rc != 0) {
-			break;
 		}
 	}
 	rcu_read_unlock();
