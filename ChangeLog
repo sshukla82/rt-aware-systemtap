@@ -82,7 +82,6 @@
 	(utrace_derived_probe_group::emit_module_init): Added error
 	handling.
 	(utrace_derived_probe_group::emit_module_exit): Added cleanup.
-	
 
 2008-03-07  David Smith  <dsmith@redhat.com>
 
@@ -92,6 +91,11 @@
 	* session.h: Added utrace_derived_probes to session.
 
 	* .gitignore: Added a few more items.
+
+2008-03-26  Frank Ch. Eigler  <fche@elastic.org>
+
+	* translate.cxx (emit_function): Set context last_stmt, in case
+	an error occurs during the function.
 
 2008-03-25  Frank Ch. Eigler  <fche@elastic.org>
 
