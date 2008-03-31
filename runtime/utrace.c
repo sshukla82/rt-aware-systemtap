@@ -1,14 +1,14 @@
 #include <linux/list.h>
 
-static LIST_HEAD(_stp_task_finder_list);
+static LIST_HEAD(__stp_task_finder_list);
 
 struct stap_task_finder_target;
 
-typedef void (*stap_utrace_callback)(struct task_struct *tsk, int register_p,
-				     struct stap_task_finder_target *tgt);
+typedef int (*stap_utrace_callback)(struct task_struct *tsk, int register_p,
+				    struct stap_task_finder_target *tgt);
 
 struct stap_task_finder_target {
-	struct list_head list;		/* _stp_task_finder_list linkage */
+	struct list_head list;		/* __stp_task_finder_list linkage */
 	struct list_head callback_list_head;
 	struct list_head callback_list;
     	const char *pathname;
@@ -20,7 +20,7 @@ struct stap_task_finder_target {
 static int
 stap_register_task_finder_target(struct stap_task_finder_target *new_tgt)
 {
-	// Since this _stp_task_finder_list is (currently) only
+	// Since this __stp_task_finder_list is (currently) only
         // written to in one big setup operation before the task
         // finder process is started, we don't need to lock it.
 	struct list_head *node;
@@ -28,7 +28,7 @@ stap_register_task_finder_target(struct stap_task_finder_target *new_tgt)
 	int found_node = 0;
 
 	// Search the list for an existing entry for pathname/pid.
-	list_for_each(node, &_stp_task_finder_list) {
+	list_for_each(node, &__stp_task_finder_list) {
 		tgt = list_entry(node, struct stap_task_finder_target, list);
 		if (tgt != NULL
 		    /* pathname-based target */
@@ -46,7 +46,7 @@ stap_register_task_finder_target(struct stap_task_finder_target *new_tgt)
 	// target to the task list.
 	if (! found_node) {
 		INIT_LIST_HEAD(&new_tgt->callback_list_head);
-		list_add(&new_tgt->list, &_stp_task_finder_list);
+		list_add(&new_tgt->list, &__stp_task_finder_list);
 		tgt = new_tgt;
 	}
 
@@ -56,14 +56,14 @@ stap_register_task_finder_target(struct stap_task_finder_target *new_tgt)
 }
 
 static void
-stap_notify_cleanup(void)
+__stp_task_finder_cleanup(void)
 {
 	struct list_head *tgt_node, *tgt_next;
 	struct list_head *cb_node, *cb_next;
 	struct stap_task_finder_target *tgt;
 
 	// Walk the main list, cleaning up as we go.
-	list_for_each_safe(tgt_node, tgt_next, &_stp_task_finder_list) {
+	list_for_each_safe(tgt_node, tgt_next, &__stp_task_finder_list) {
 		tgt = list_entry(tgt_node, struct stap_task_finder_target,
 				 list);
 		if (tgt == NULL)
@@ -84,8 +84,12 @@ stap_notify_cleanup(void)
 			if (cb_tgt == NULL)
 				continue;
 
+#if 0
+// DRS: for now, do nothing here.
 			if (cb_tgt->callback != NULL)
+// If we error here, then what???  ignore and go on?
 				cb_tgt->callback(NULL, 0, cb_tgt);
+#endif
 
 			list_del(&cb_tgt->callback_list);
 		}
@@ -93,7 +97,8 @@ stap_notify_cleanup(void)
 	}
 }
 
-void stap_utrace_detach_ops (struct utrace_engine_ops *ops)
+static void
+stap_utrace_detach_ops(struct utrace_engine_ops *ops)
 {
 	struct task_struct *tsk;
 	struct utrace_attached_engine *engine;
@@ -132,7 +137,7 @@ void stap_utrace_detach_ops (struct utrace_engine_ops *ops)
 }
 
 static char *
-stap_utrace_get_mm_path(struct mm_struct *mm, char *buf, int buflen)
+__stp_utrace_get_mm_path(struct mm_struct *mm, char *buf, int buflen)
 {
 	struct vm_area_struct *vma;
 	char *rc = NULL;
@@ -159,14 +164,14 @@ stap_utrace_get_mm_path(struct mm_struct *mm, char *buf, int buflen)
 	return rc;
 }
 
-#define STAP_UTRACE_TASK_FINDER_EVENTS (UTRACE_EVENT(CLONE) \
+#define __STP_UTRACE_TASK_FINDER_EVENTS (UTRACE_EVENT(CLONE) \
 					| UTRACE_EVENT(EXEC))
 
 static u32
-stap_utrace_task_finder_clone(struct utrace_attached_engine *engine,
-			      struct task_struct *parent,
-			      unsigned long clone_flags,
-			      struct task_struct *child)
+__stp_utrace_task_finder_clone(struct utrace_attached_engine *engine,
+			       struct task_struct *parent,
+			       unsigned long clone_flags,
+			       struct task_struct *child)
 {
 	struct utrace_attached_engine *child_engine;
 	struct mm_struct *mm;
@@ -183,7 +188,7 @@ stap_utrace_task_finder_clone(struct utrace_attached_engine *engine,
 			_stp_error("attach to clone child %d (%lx) from 0x%p failed: %ld", (int)child->pid, clone_flags, engine, PTR_ERR(child_engine));
 		else {
 			utrace_set_flags(child, child_engine,
-					 STAP_UTRACE_TASK_FINDER_EVENTS);
+					 __STP_UTRACE_TASK_FINDER_EVENTS);
 			_stp_dbug(__FUNCTION__, __LINE__,
 				  "attach to clone child %d (%lx) from 0x%p",
 				  (int)child->pid, clone_flags, engine);
@@ -193,10 +198,10 @@ stap_utrace_task_finder_clone(struct utrace_attached_engine *engine,
 }
 
 static u32
-stap_utrace_task_finder_exec(struct utrace_attached_engine *engine,
-			     struct task_struct *tsk,
-			     const struct linux_binprm *bprm,
-			     struct pt_regs *regs)
+__stp_utrace_task_finder_exec(struct utrace_attached_engine *engine,
+			      struct task_struct *tsk,
+			      const struct linux_binprm *bprm,
+			      struct pt_regs *regs)
 {
 	// On exec, check bprm
 	_stp_dbug(__FUNCTION__, __LINE__, "pid %d is exec'ing '%s' ('%s')",
@@ -208,7 +213,7 @@ stap_utrace_task_finder_exec(struct utrace_attached_engine *engine,
 		struct list_head *tgt_node;
 		struct stap_task_finder_target *tgt;
 		int found_node = 0;
-		list_for_each(tgt_node, &_stp_task_finder_list) {
+		list_for_each(tgt_node, &__stp_task_finder_list) {
 			tgt = list_entry(tgt_node,
 					 struct stap_task_finder_target, list);
 			if (tgt != NULL && tgt->pathlen > 0
@@ -229,6 +234,7 @@ stap_utrace_task_finder_exec(struct utrace_attached_engine *engine,
 						    callback_list);
 				if (cb_tgt == NULL || cb_tgt->callback == NULL)
 					continue;
+// DRS: handle error here...
 				cb_tgt->callback(tsk, 1, cb_tgt);
 			}
 		}
@@ -236,9 +242,9 @@ stap_utrace_task_finder_exec(struct utrace_attached_engine *engine,
 	return UTRACE_ACTION_RESUME;
 }
 
-struct utrace_engine_ops stap_utrace_task_finder_ops = {
-	.report_clone = stap_utrace_task_finder_clone,
-	.report_exec = stap_utrace_task_finder_exec,
+struct utrace_engine_ops __stp_utrace_task_finder_ops = {
+	.report_clone = __stp_utrace_task_finder_clone,
+	.report_exec = __stp_utrace_task_finder_exec,
 };
 
 int
@@ -272,7 +278,7 @@ stap_utrace_start_task_finder(void)
 
 		/* Attach to the thread */
 		engine = utrace_attach(tsk, UTRACE_ATTACH_CREATE,
-				       &stap_utrace_task_finder_ops, 0);
+				       &__stp_utrace_task_finder_ops, 0);
 		if (IS_ERR(engine)) {
 			int error = -PTR_ERR(engine);
 			if (error != ENOENT) {
@@ -288,12 +294,12 @@ stap_utrace_start_task_finder(void)
 			rc = EFAULT;
 			break;
 		}
-		utrace_set_flags(tsk, engine, STAP_UTRACE_TASK_FINDER_EVENTS);
+		utrace_set_flags(tsk, engine, __STP_UTRACE_TASK_FINDER_EVENTS);
 		_stp_dbug(__FUNCTION__, __LINE__, "attach to pid %d",
 			  (int)tsk->pid);
 
 		/* Check the thread's exe's path/pid against our list. */
-		mmpath = stap_utrace_get_mm_path(mm, mmpath_buf, PATH_MAX);
+		mmpath = __stp_utrace_get_mm_path(mm, mmpath_buf, PATH_MAX);
 		mmput(mm);		/* We're done with mm */
 		if (IS_ERR(mmpath)) {
 			rc = -PTR_ERR(mmpath);
@@ -304,7 +310,7 @@ stap_utrace_start_task_finder(void)
 		mmpathlen = strlen(mmpath);
 		_stp_dbug(__FUNCTION__, __LINE__, "pid %d path: \"%s\"",
 			  (int)tsk->pid, mmpath);
-		list_for_each(tgt_node, &_stp_task_finder_list) {
+		list_for_each(tgt_node, &__stp_task_finder_list) {
 			struct stap_task_finder_target *tgt;
 			struct list_head *cb_node;
 
@@ -330,6 +336,7 @@ stap_utrace_start_task_finder(void)
 				if (cb_tgt == NULL || cb_tgt->callback == NULL)
 					continue;
 					
+// DRS: handle error here...
 				cb_tgt->callback(tsk, 1, cb_tgt);
 			}
 		}
@@ -341,4 +348,11 @@ stap_utrace_start_task_finder(void)
 		_stp_error(error_fmt, rc, (int)tsk->pid);
 	}
 	return rc;
+}
+
+static void
+stap_utrace_stop_task_finder(void)
+{
+	stap_utrace_detach_ops(&__stp_utrace_task_finder_ops);
+	__stp_task_finder_cleanup();
 }
