@@ -164,8 +164,9 @@ __stp_utrace_get_mm_path(struct mm_struct *mm, char *buf, int buflen)
 	return rc;
 }
 
-#define __STP_UTRACE_TASK_FINDER_EVENTS (UTRACE_EVENT(CLONE) \
-					| UTRACE_EVENT(EXEC))
+#define __STP_UTRACE_TASK_FINDER_EVENTS (UTRACE_EVENT(CLONE)	\
+					 | UTRACE_EVENT(EXEC)	\
+					 | UTRACE_EVENT(DEATH))
 
 static u32
 __stp_utrace_task_finder_clone(struct utrace_attached_engine *engine,
@@ -242,9 +243,83 @@ __stp_utrace_task_finder_exec(struct utrace_attached_engine *engine,
 	return UTRACE_ACTION_RESUME;
 }
 
+static u32
+__stp_utrace_task_finder_death(struct utrace_attached_engine *engine,
+			       struct task_struct *tsk)
+{
+	struct mm_struct *mm;
+	char *mmpath_buf;
+	char *mmpath;
+	size_t mmpathlen = 0;
+
+	_stp_dbug(__FUNCTION__, __LINE__, "pid %d is dying", (int)tsk->pid);
+
+	mmpath_buf = _stp_kmalloc(PATH_MAX);
+	if (mmpath_buf == NULL) {
+//		_stp_error("Unable to allocate space for path");
+		return UTRACE_ACTION_RESUME;
+	}
+
+	mm = get_task_mm(tsk);
+	if (mm) {
+		/* Check the thread's exe's path/pid against our list. */
+		mmpath = __stp_utrace_get_mm_path(mm, mmpath_buf, PATH_MAX);
+		mmput(mm);		/* We're done with mm */
+		if (IS_ERR(mmpath)) {
+// How to handle error here?
+//			rc = -PTR_ERR(mmpath);
+		}
+		else {
+			mmpathlen = strlen(mmpath);
+		}
+
+	}
+
+	if (mmpathlen > 0) {
+		struct list_head *tgt_node;
+		_stp_dbug(__FUNCTION__, __LINE__, "pid %d path: \"%s\"",
+			  (int)tsk->pid, mmpath);
+		list_for_each(tgt_node, &__stp_task_finder_list) {
+			struct stap_task_finder_target *tgt;
+			struct list_head *cb_node;
+
+			tgt = list_entry(tgt_node,
+					 struct stap_task_finder_target, list);
+			if (tgt == NULL)
+				continue;
+			/* pathname-based target */
+			else if (tgt->pathlen > 0
+				 && (tgt->pathlen != mmpathlen
+				     || strcmp(tgt->pathname, mmpath) != 0))
+				continue;
+			/* pid-based target */
+			else if (tgt->pid != 0 && tgt->pid != tsk->pid)
+				continue;
+
+			_stp_dbug(__FUNCTION__, __LINE__, "found a match!");
+			list_for_each(cb_node, &tgt->callback_list_head) {
+				struct stap_task_finder_target *cb_tgt;
+				cb_tgt = list_entry(cb_node,
+						    struct stap_task_finder_target,
+						    callback_list);
+				if (cb_tgt == NULL
+				    || cb_tgt->callback == NULL)
+				    continue;
+					
+// DRS: handle error here...
+				cb_tgt->callback(tsk, 1, cb_tgt);
+			}
+		}
+	}
+	kfree(mmpath_buf);
+	return UTRACE_ACTION_RESUME;
+}
+
+
 struct utrace_engine_ops __stp_utrace_task_finder_ops = {
 	.report_clone = __stp_utrace_task_finder_clone,
 	.report_exec = __stp_utrace_task_finder_exec,
+	.report_death = __stp_utrace_task_finder_death,
 };
 
 int
