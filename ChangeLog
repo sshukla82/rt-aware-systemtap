@@ -1,3 +1,20 @@
+2008-03-31  David Smith  <dsmith@redhat.com>
+
+	* tapsets.cxx (output_utrace_config): New function.
+	(struct uprobe_derived_probe): Added path info.
+	(uprobe_builder::uprobe_builder): Check for path variant.
+	(uprobe_derived_probe_group::emit_module_decls): Uses new
+	framework.
+	(uprobe_derived_probe_group::emit_module_init): Ditto.
+	(utrace_derived_probe_group::emit_module_decls): Calls
+	output_utrace_config().
+	(utrace_derived_probe_group::emit_module_decls): Updated callback
+	function signature.
+	(utrace_derived_probe_group::emit_module_init): Updated task
+	finder cleanup.
+	(utrace_derived_probe_group::emit_module_exit): Ditto.
+	(register_standard_tapsets): Added path-based uprobes.
+	
 2008-03-27  David Smith  <dsmith@redhat.com>
 
 	* tapsets.cxx (utrace_derived_probe_group::emit_module_decls):

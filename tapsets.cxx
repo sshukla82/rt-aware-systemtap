@@ -295,6 +295,25 @@ common_probe_entryfn_epilogue (translator_output* o,
 }
 
 
+void
+output_utrace_config (systemtap_session& s)
+{
+  static bool output_utrace_config_p = true;
+
+  if (output_utrace_config_p)
+    {
+      output_utrace_config_p = false;
+      s.op->newline() << "#if ! defined(CONFIG_UTRACE)";
+      s.op->newline() << "#error \"Need CONFIG_UTRACE!\"";
+      s.op->newline() << "#endif";
+      s.op->newline() << "#include <linux/utrace.h>";
+      s.op->newline() << "#include <linux/mount.h>";
+      s.op->newline() << "#include \"utrace.c\"";
+      s.op->newline();
+    }
+}
+
+
 // ------------------------------------------------------------------------
 
 void
@@ -4250,10 +4269,14 @@ dwarf_builder::build(systemtap_session & sess,
 
 struct uprobe_derived_probe: public derived_probe
 {
-  uint64_t process, address;
+  bool has_path;
+  string path;
+  int64_t pid;
+  uint64_t address;
   bool return_p;
   uprobe_derived_probe (systemtap_session &s, probe* p, probe_point* l,
-                        uint64_t, uint64_t, bool);
+                        bool hp, string &pn, int64_t pd, uint64_t addr,
+			bool rp);
   void join_group (systemtap_session& s);
 };
 
@@ -4269,8 +4292,11 @@ public:
 
 uprobe_derived_probe::uprobe_derived_probe (systemtap_session &s,
                                             probe* p, probe_point* l,
-                                            uint64_t pp, uint64_t aa, bool rr):
-  derived_probe(p, l), process(pp), address(aa), return_p (rr)
+					    bool hp, string &pn,
+					    int64_t pd, uint64_t addr,
+					    bool rp):
+  derived_probe(p, l), has_path(hp), path(pn), pid(pd), address(addr),
+  return_p (rp)
 {
   s.need_uprobes = true;
 }
@@ -4294,17 +4320,20 @@ struct uprobe_builder: public derived_probe_builder
 		     std::map<std::string, literal *> const & parameters,
 		     vector<derived_probe *> & finished_results)
   {
-    int64_t process, address;
+    string path;
+    int64_t pid;
+    int64_t address;
+    bool has_path = get_param (parameters, TOK_PROCESS, path);
+    bool has_pid = get_param (parameters, TOK_PROCESS, pid);
+    bool has_address = get_param (parameters, TOK_STATEMENT, address);
+    assert ((has_path || has_pid) && has_address);
 
-    bool b1 = get_param (parameters, TOK_PROCESS, process);
-    (void) b1;
-    bool b2 = get_param (parameters, TOK_STATEMENT, address);
-    (void) b2;
-    bool rr = has_null_param (parameters, TOK_RETURN);
-    assert (b1 && b2); // by pattern_root construction
+    bool return_p = has_null_param (parameters, TOK_RETURN);
 
     finished_results.push_back(new uprobe_derived_probe(sess, base, location,
-                                                        process, address, rr));
+							has_path, path,
+							pid, address,
+							return_p));
   }
 };
 
@@ -4314,6 +4343,7 @@ uprobe_derived_probe_group::emit_module_decls (systemtap_session& s)
 {
   if (probes.empty()) return;
   s.op->newline() << "/* ---- user probes ---- */";
+  output_utrace_config(s);
 
   // If uprobes isn't in the kernel, pull it in from the runtime.
   s.op->newline() << "#if defined(CONFIG_UPROBES) || defined(CONFIG_UPROBES_MODULE)";
@@ -4323,26 +4353,14 @@ uprobe_derived_probe_group::emit_module_decls (systemtap_session& s)
   s.op->newline() << "#endif";
 
   s.op->newline() << "struct stap_uprobe {";
-  s.op->newline(1) << "union { struct uprobe up; struct uretprobe urp; };";
-  s.op->newline() << "unsigned registered_p:1;";
-  s.op->newline() << "unsigned return_p:1;";
-  s.op->newline() << "unsigned long process;";
+  s.op->indent(1);
+  s.op->newline() << "struct stap_task_finder_target tgt;";
+  s.op->newline() << "union { struct uprobe up; struct uretprobe urp; };";
   s.op->newline() << "unsigned long address;";
   s.op->newline() << "const char *pp;";
   s.op->newline() << "void (*ph) (struct context*);";
-  s.op->newline(-1) << "} stap_uprobes [] = {";
-  s.op->indent(1);
-  for (unsigned i =0; i<probes.size(); i++)
-    {
-      uprobe_derived_probe* p = probes[i];
-      s.op->newline() << "{";
-      s.op->line() << " .address=0x" << hex << p->address << dec << "UL,";
-      s.op->line() << " .process=" << p->process << ",";
-      s.op->line() << " .pp=" << lex_cast_qstring (*p->sole_location()) << ",";
-      s.op->line() << " .ph=&" << p->name << ",";
-      if (p->return_p) s.op->line() << " .return_p=1,";
-      s.op->line() << " },";
-    }
+  s.op->newline() << "unsigned registered_p:1;";
+  s.op->newline() << "unsigned return_p:1;";
   s.op->newline(-1) << "};";
 
   s.op->newline();
@@ -4364,6 +4382,63 @@ uprobe_derived_probe_group::emit_module_decls (systemtap_session& s)
   s.op->newline() << "(*sup->ph) (c);";
   common_probe_entryfn_epilogue (s.op);
   s.op->newline(-1) << "}";
+
+  // Output routine to handle uprobe probes
+  s.op->newline() << "static int _stp_uprobe_cb(struct task_struct *tsk, int register_p, struct stap_task_finder_target *tgt) {";
+  s.op->indent(1);
+  s.op->newline() << "int rc = 0;";
+  s.op->newline() << "struct stap_uprobe *p = container_of(tgt, struct stap_uprobe, tgt);";
+  s.op->newline() << "if (register_p) {";
+  s.op->indent(1);
+  s.op->newline() << "_stp_dbug(__FUNCTION__, __LINE__, \"registering pp %s\", p->pp);";
+  s.op->newline() << "if (p->return_p) {";
+  s.op->indent(1);
+  s.op->newline() << "p->urp.u.pid = tsk->pid;";
+  s.op->newline() << "p->urp.u.vaddr = p->address;";
+  s.op->newline() << "p->urp.handler = &enter_uretprobe_probe;";
+  s.op->newline() << "rc = register_uretprobe (&p->urp);";
+  s.op->newline(-1) << "}";
+  s.op->newline() << "else {";
+  s.op->indent(1);
+  s.op->newline() << "p->up.pid = tsk->pid;";
+  s.op->newline() << "p->up.vaddr = p->address;";
+  s.op->newline() << "p->up.handler = &enter_uprobe_probe;";
+  s.op->newline() << "rc = register_uprobe (&p->up);";
+  s.op->newline(-1) << "}";
+  s.op->newline(-1) << "}";
+  s.op->newline() << "else {";
+  s.op->indent(1);
+  s.op->newline() << "_stp_dbug(__FUNCTION__, __LINE__, \"unregistering pp %s\", p->pp);";
+  s.op->newline() << "if (p->return_p)";
+  s.op->indent(1);
+  s.op->newline() << "unregister_uretprobe (&p->urp);";
+  s.op->newline(-1) << "else";
+  s.op->indent(1);
+  s.op->newline() << "unregister_uprobe (&p->up);";
+  s.op->indent(-1);
+  s.op->newline(-1) << "}";
+  s.op->newline() << "return rc;";
+  s.op->newline(-1) << "}";
+
+  s.op->newline() << "struct stap_uprobe stap_uprobes[] = {";
+  s.op->indent(1);
+  for (unsigned i =0; i<probes.size(); i++)
+    {
+      uprobe_derived_probe* p = probes[i];
+      s.op->newline() << "{";
+      s.op->line() << " .tgt={";
+      s.op->line() << " .pathname=\"" << p->path << "\",";
+      s.op->line() << " .pathlen=" << p->path.length() << ",";
+      s.op->line() << " .pid=" << p->pid << ",";
+      s.op->line() << " .callback=&_stp_uprobe_cb,";
+      s.op->line() << " },";
+      s.op->line() << " .address=0x" << hex << p->address << dec << "UL,";
+      s.op->line() << " .pp=" << lex_cast_qstring (*p->sole_location()) << ",";
+      s.op->line() << " .ph=&" << p->name << ",";
+      if (p->return_p) s.op->line() << " .return_p=1,";
+      s.op->line() << " },";
+    }
+  s.op->newline(-1) << "};";
 }
 
 
@@ -4376,13 +4451,14 @@ uprobe_derived_probe_group::emit_module_init (systemtap_session& s)
   s.op->newline() << "for (i=0; i<" << probes.size() << "; i++) {";
   s.op->newline(1) << "struct stap_uprobe *sup = & stap_uprobes[i];";
   s.op->newline() << "probe_point = sup->pp;";
+#if 0
   s.op->newline() << "if (sup->return_p) {";
-  s.op->newline(1) << "sup->urp.u.pid = sup->process;";
+  s.op->newline(1) << "sup->urp.u.pid = sup->tgt.pid;";
   s.op->newline() << "sup->urp.u.vaddr = sup->address;";
   s.op->newline() << "sup->urp.handler = &enter_uretprobe_probe;";
   s.op->newline() << "rc = register_uretprobe (& sup->urp);";
   s.op->newline(-1) << "} else {";
-  s.op->newline(1) << "sup->up.pid = sup->process;";
+  s.op->newline(1) << "sup->up.pid = sup->tgt.pid;";
   s.op->newline() << "sup->up.vaddr = sup->address;";
   s.op->newline() << "sup->up.handler = &enter_uprobe_probe;";
   s.op->newline() << "rc = register_uprobe (& sup->up);";
@@ -4398,6 +4474,10 @@ uprobe_derived_probe_group::emit_module_init (systemtap_session& s)
   s.op->newline() << "break;"; // don't attempt to register any more probes
   s.op->newline(-1) << "}";
   s.op->newline() << "else sup->registered_p = 1;";
+#else
+  s.op->newline() << "stap_register_task_finder_target(&sup->tgt);";
+  s.op->newline() << "sup->registered_p = 1;";
+#endif
   s.op->newline(-1) << "}";
 }
 
@@ -4517,23 +4597,13 @@ utrace_derived_probe_group::emit_module_decls (systemtap_session& s)
   s.op->newline() << "/* ---- utrace probes ---- */";
 
   // Warn of misconfigured kernels
-  s.op->newline() << "#if ! defined(CONFIG_UTRACE)";
-  s.op->newline() << "#error \"Need CONFIG_UTRACE!\"";
-  s.op->newline() << "#endif";
-  s.op->newline() << "#include <linux/utrace.h>";
-  s.op->newline() << "#include <linux/mount.h>";
-  s.op->newline() << "#include \"utrace.c\"";
-  s.op->newline();
+  output_utrace_config(s);
 
   s.op->newline() << "struct stap_utrace_probe {";
   s.op->indent(1);
   s.op->newline() << "struct stap_task_finder_target tgt;";
   s.op->newline() << "const char *pp;";
   s.op->newline() << "void (*ph) (struct context*);";
-// Pid perhaps needed later...
-//  s.op->newline() << "pid_t target_pid;";
-//  s.op->newline() << "unsigned registered_p;";
-//  s.op->newline() << "unsigned registered_p:1;";
   s.op->newline() << "struct utrace_engine_ops ops;";
   s.op->newline() << "unsigned long flags;";
   s.op->newline(-1) << "};";
@@ -4553,8 +4623,9 @@ utrace_derived_probe_group::emit_module_decls (systemtap_session& s)
   s.op->newline(-1) << "}";
 
   // Output routine to handle utrace probes
-  s.op->newline() << "static void _stp_utrace_probe_cb(struct task_struct *tsk, int register_p, struct stap_task_finder_target *tgt) {";
+  s.op->newline() << "static int _stp_utrace_probe_cb(struct task_struct *tsk, int register_p, struct stap_task_finder_target *tgt) {";
   s.op->indent(1);
+  s.op->newline() << "int rc = 0;";
   s.op->newline() << "struct stap_utrace_probe *p = container_of(tgt, struct stap_utrace_probe, tgt);";
   s.op->newline() << "struct utrace_attached_engine *engine;";
 
@@ -4567,12 +4638,14 @@ utrace_derived_probe_group::emit_module_decls (systemtap_session& s)
   s.op->newline() << "int error = -PTR_ERR(engine);";
   s.op->newline() << "if (error != ENOENT) {";
   s.op->indent(1);
-  s.op->newline() << "_stp_error(\"utrace_attach returned error %d on pid %d\", error, (int)tsk->pid);";
+//  s.op->newline() << "_stp_error(\"utrace_attach returned error %d on pid %d\", error, (int)tsk->pid);";
+  s.op->newline() << "rc = error;";
   s.op->newline(-1) << "}";
   s.op->newline(-1) << "}";
   s.op->newline() << "else if (unlikely(engine == NULL)) {";
   s.op->indent(1);
-  s.op->newline() << "_stp_error(\"utrace_attach returned NULL!\");";
+//  s.op->newline() << "_stp_error(\"utrace_attach returned NULL!\");";
+  s.op->newline() << "rc = ENOENT;";
   s.op->newline(-1) << "}";
   s.op->newline() << "else {";
   s.op->indent(1);
@@ -4584,6 +4657,7 @@ utrace_derived_probe_group::emit_module_decls (systemtap_session& s)
   s.op->newline() << "_stp_dbug(__FUNCTION__, __LINE__, \"unregistering pp %s\", p->pp);";
   s.op->newline() << "stap_utrace_detach_ops(&p->ops);";
   s.op->newline(-1) << "}";
+  s.op->newline() << "return rc;";
   s.op->newline(-1) << "}";
 
   s.op->newline() << "struct stap_utrace_probe stap_utrace_probes[] = {";
@@ -4686,8 +4760,7 @@ utrace_derived_probe_group::emit_module_init (systemtap_session& s)
   // rollback all utrace probes
   s.op->newline() << "if (rc) {";
   s.op->indent(1);
-  s.op->newline() << "stap_utrace_detach_ops(&stap_utrace_task_finder_ops);";
-  s.op->newline() << "stap_notify_cleanup();";
+  s.op->newline() << "stap_utrace_stop_task_finder();";
   s.op->newline(-1) << "}";
 }
 
@@ -4699,10 +4772,8 @@ utrace_derived_probe_group::emit_module_exit (systemtap_session& s)
 
   s.op->newline();
   s.op->newline() << "/* ---- utrace probes ---- */";
-  // Stop the task finder first...
-  s.op->newline() << "stap_utrace_detach_ops(&stap_utrace_task_finder_ops);";
-  // stap_notify_cleanup tears down 'process(PATH)' probes
-  s.op->newline() << "stap_notify_cleanup();";
+  // Stop the task finder
+  s.op->newline() << "stap_utrace_stop_task_finder();";
 }
 
 
@@ -6905,20 +6976,18 @@ register_standard_tapsets(systemtap_session & s)
   dwarf_derived_probe::register_patterns(s.pattern_root);
 
   // XXX: user-space starter set
+  s.pattern_root->bind_str(TOK_PROCESS)
+    ->bind_num(TOK_STATEMENT)->bind(TOK_ABSOLUTE)
+    ->bind(new uprobe_builder ());
   s.pattern_root->bind_num(TOK_PROCESS)
     ->bind_num(TOK_STATEMENT)->bind(TOK_ABSOLUTE)
+    ->bind(new uprobe_builder ());
+  s.pattern_root->bind_str(TOK_PROCESS)
+    ->bind_num(TOK_STATEMENT)->bind(TOK_ABSOLUTE)->bind(TOK_RETURN)
     ->bind(new uprobe_builder ());
   s.pattern_root->bind_num(TOK_PROCESS)
     ->bind_num(TOK_STATEMENT)->bind(TOK_ABSOLUTE)->bind(TOK_RETURN)
     ->bind(new uprobe_builder ());
-#if 0
-  s.pattern_root->bind_num(TOK_PROCESS)
-    ->bind_num(TOK_STATEMENT)->bind(TOK_ABSOLUTE)
-    ->bind(new uprobe_builder ());
-  s.pattern_root->bind_num(TOK_PROCESS)
-    ->bind_num(TOK_STATEMENT)->bind(TOK_ABSOLUTE)->bind(TOK_RETURN)
-    ->bind(new uprobe_builder ());
-#endif
 
   s.pattern_root->bind_str(TOK_PROCESS)->bind("death")
       ->bind(new utrace_builder ());
