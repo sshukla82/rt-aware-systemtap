@@ -8,9 +8,14 @@ typedef int (*stap_utrace_callback)(struct task_struct *tsk, int register_p,
 				    struct stap_task_finder_target *tgt);
 
 struct stap_task_finder_target {
+/* private: */
 	struct list_head list;		/* __stp_task_finder_list linkage */
 	struct list_head callback_list_head;
 	struct list_head callback_list;
+	struct utrace_engine_ops ops;
+	int engine_attached;
+
+/* public: */
     	const char *pathname;
 	size_t pathlen;
 	pid_t pid;
@@ -51,50 +56,9 @@ stap_register_task_finder_target(struct stap_task_finder_target *new_tgt)
 	}
 
 	// Add this target to the callback list for this task.
+	new_tgt->engine_attached = 0;
 	list_add_tail(&new_tgt->callback_list, &tgt->callback_list_head);
 	return 0;
-}
-
-static void
-__stp_task_finder_cleanup(void)
-{
-	struct list_head *tgt_node, *tgt_next;
-	struct list_head *cb_node, *cb_next;
-	struct stap_task_finder_target *tgt;
-
-	// Walk the main list, cleaning up as we go.
-	list_for_each_safe(tgt_node, tgt_next, &__stp_task_finder_list) {
-		tgt = list_entry(tgt_node, struct stap_task_finder_target,
-				 list);
-		if (tgt == NULL)
-			continue;
-
-		if (tgt->pathlen > 0)
-			_stp_dbug(__FUNCTION__, __LINE__,
-				  "cleaning up '%s' entry", tgt->pathname);
-		else
-			_stp_dbug(__FUNCTION__, __LINE__,
-				  "cleaning up pid %d entry", tgt->pid);
-		list_for_each_safe(cb_node, cb_next,
-				   &tgt->callback_list_head) {
-			struct stap_task_finder_target *cb_tgt;
-			cb_tgt = list_entry(cb_node,
-					    struct stap_task_finder_target,
-					    callback_list);
-			if (cb_tgt == NULL)
-				continue;
-
-#if 0
-// DRS: for now, do nothing here.
-			if (cb_tgt->callback != NULL)
-// If we error here, then what???  ignore and go on?
-				cb_tgt->callback(NULL, 0, cb_tgt);
-#endif
-
-			list_del(&cb_tgt->callback_list);
-		}
-		list_del(&tgt->list);
-	}
 }
 
 static void
@@ -136,6 +100,52 @@ stap_utrace_detach_ops(struct utrace_engine_ops *ops)
 	}
 }
 
+static void
+__stp_task_finder_cleanup(void)
+{
+	struct list_head *tgt_node, *tgt_next;
+	struct list_head *cb_node, *cb_next;
+	struct stap_task_finder_target *tgt;
+
+	// Walk the main list, cleaning up as we go.
+	list_for_each_safe(tgt_node, tgt_next, &__stp_task_finder_list) {
+		tgt = list_entry(tgt_node, struct stap_task_finder_target,
+				 list);
+		if (tgt == NULL)
+			continue;
+
+		if (tgt->pathlen > 0)
+			_stp_dbug(__FUNCTION__, __LINE__,
+				  "cleaning up '%s' entry", tgt->pathname);
+		else
+			_stp_dbug(__FUNCTION__, __LINE__,
+				  "cleaning up pid %d entry", tgt->pid);
+		list_for_each_safe(cb_node, cb_next,
+				   &tgt->callback_list_head) {
+			struct stap_task_finder_target *cb_tgt;
+			cb_tgt = list_entry(cb_node,
+					    struct stap_task_finder_target,
+					    callback_list);
+			if (cb_tgt == NULL)
+				continue;
+
+#if 0
+// DRS: for now, do nothing here.
+			if (cb_tgt->callback != NULL)
+// If we error here, then what???  ignore and go on?
+				cb_tgt->callback(NULL, 0, cb_tgt);
+#endif
+			if (cb_tgt->engine_attached) {
+				stap_utrace_detach_ops(&cb_tgt->ops);
+				cb_tgt->engine_attached = 0;
+			}
+
+			list_del(&cb_tgt->callback_list);
+		}
+		list_del(&tgt->list);
+	}
+}
+
 static char *
 __stp_utrace_get_mm_path(struct mm_struct *mm, char *buf, int buflen)
 {
@@ -165,8 +175,9 @@ __stp_utrace_get_mm_path(struct mm_struct *mm, char *buf, int buflen)
 }
 
 #define __STP_UTRACE_TASK_FINDER_EVENTS (UTRACE_EVENT(CLONE)	\
-					 | UTRACE_EVENT(EXEC)	\
-					 | UTRACE_EVENT(DEATH))
+					 | UTRACE_EVENT(EXEC))
+
+#define __STP_UTRACE_ATTACHED_TASK_EVENTS (UTRACE_EVENT(DEATH))
 
 static u32
 __stp_utrace_task_finder_clone(struct utrace_attached_engine *engine,
@@ -186,7 +197,9 @@ __stp_utrace_task_finder_clone(struct utrace_attached_engine *engine,
 		child_engine = utrace_attach(child, UTRACE_ATTACH_CREATE,
 					     engine->ops, 0);
 		if (IS_ERR(child_engine))
-			_stp_error("attach to clone child %d (%lx) from 0x%p failed: %ld", (int)child->pid, clone_flags, engine, PTR_ERR(child_engine));
+			_stp_error("attach to clone child %d (%lx) from 0x%p failed: %ld",
+				   (int)child->pid, clone_flags, engine,
+				   PTR_ERR(child_engine));
 		else {
 			utrace_set_flags(child, child_engine,
 					 __STP_UTRACE_TASK_FINDER_EVENTS);
@@ -195,6 +208,39 @@ __stp_utrace_task_finder_clone(struct utrace_attached_engine *engine,
 				  (int)child->pid, clone_flags, engine);
 		}
 	}
+	return UTRACE_ACTION_RESUME;
+}
+
+static u32
+__stp_utrace_task_finder_death(struct utrace_attached_engine *engine,
+			       struct task_struct *tsk)
+{
+	struct stap_task_finder_target *tgt = engine->data;
+
+	// The first implementation of this added a
+	// UTRACE_EVENT(DEATH) handler to
+	// __stp_utrace_task_finder_ops.  However, dead threads don't
+	// have a mm_struct, so we can't find the exe's path.  So, we
+	// don't know which callback(s) to call.
+	//
+	// So, now when an "interesting" thread is found, we add a
+	// separate UTRACE_EVENT(DEATH) handler for every probe. */
+
+	if (tgt == NULL)
+		return UTRACE_ACTION_RESUME;
+
+	if (tgt->pathlen > 0)
+		_stp_dbug(__FUNCTION__, __LINE__, "pid %d is dying (%s)",
+			  (int)tsk->pid, tgt->pathname);
+	else
+		_stp_dbug(__FUNCTION__, __LINE__, "pid %d is dying",
+			  (int)tsk->pid);
+
+	if (tgt->callback == NULL)
+		return UTRACE_ACTION_RESUME;
+					
+// DRS: handle error here...
+	tgt->callback(tsk, 0, tgt);
 	return UTRACE_ACTION_RESUME;
 }
 
@@ -233,93 +279,42 @@ __stp_utrace_task_finder_exec(struct utrace_attached_engine *engine,
 				cb_tgt = list_entry(cb_node,
 						    struct stap_task_finder_target,
 						    callback_list);
-				if (cb_tgt == NULL || cb_tgt->callback == NULL)
+				if (cb_tgt == NULL)
 					continue;
+
 // DRS: handle error here...
-				cb_tgt->callback(tsk, 1, cb_tgt);
+				if (cb_tgt->callback != NULL)
+					cb_tgt->callback(tsk, 1, cb_tgt);
+
+				memset(&cb_tgt->ops, 0, sizeof(cb_tgt->ops));
+				cb_tgt->ops.report_death \
+					= &__stp_utrace_task_finder_death;
+
+				engine = utrace_attach(tsk,
+						       UTRACE_ATTACH_CREATE,
+						       &cb_tgt->ops, cb_tgt);
+				if (IS_ERR(engine))
+//					_stp_error("attach to clone child %d (%lx) from 0x%p failed: %ld", (int)child->pid, clone_flags, engine, PTR_ERR(child_engine));
+				    _stp_dbug(__FUNCTION__, __LINE__,
+					      "attach to exec %d failed: %ld",
+					      (int)tsk->pid, PTR_ERR(engine));
+				else {
+					utrace_set_flags(tsk, engine,
+							 __STP_UTRACE_ATTACHED_TASK_EVENTS);
+					cb_tgt->engine_attached = 1;
+					_stp_dbug(__FUNCTION__, __LINE__,
+						  "attach to exec %d");
+				}
+				
 			}
 		}
 	}
 	return UTRACE_ACTION_RESUME;
 }
-
-static u32
-__stp_utrace_task_finder_death(struct utrace_attached_engine *engine,
-			       struct task_struct *tsk)
-{
-	struct mm_struct *mm;
-	char *mmpath_buf;
-	char *mmpath;
-	size_t mmpathlen = 0;
-
-	_stp_dbug(__FUNCTION__, __LINE__, "pid %d is dying", (int)tsk->pid);
-
-	mmpath_buf = _stp_kmalloc(PATH_MAX);
-	if (mmpath_buf == NULL) {
-//		_stp_error("Unable to allocate space for path");
-		return UTRACE_ACTION_RESUME;
-	}
-
-	mm = get_task_mm(tsk);
-	if (mm) {
-		/* Check the thread's exe's path/pid against our list. */
-		mmpath = __stp_utrace_get_mm_path(mm, mmpath_buf, PATH_MAX);
-		mmput(mm);		/* We're done with mm */
-		if (IS_ERR(mmpath)) {
-// How to handle error here?
-//			rc = -PTR_ERR(mmpath);
-		}
-		else {
-			mmpathlen = strlen(mmpath);
-		}
-
-	}
-
-	if (mmpathlen > 0) {
-		struct list_head *tgt_node;
-		_stp_dbug(__FUNCTION__, __LINE__, "pid %d path: \"%s\"",
-			  (int)tsk->pid, mmpath);
-		list_for_each(tgt_node, &__stp_task_finder_list) {
-			struct stap_task_finder_target *tgt;
-			struct list_head *cb_node;
-
-			tgt = list_entry(tgt_node,
-					 struct stap_task_finder_target, list);
-			if (tgt == NULL)
-				continue;
-			/* pathname-based target */
-			else if (tgt->pathlen > 0
-				 && (tgt->pathlen != mmpathlen
-				     || strcmp(tgt->pathname, mmpath) != 0))
-				continue;
-			/* pid-based target */
-			else if (tgt->pid != 0 && tgt->pid != tsk->pid)
-				continue;
-
-			_stp_dbug(__FUNCTION__, __LINE__, "found a match!");
-			list_for_each(cb_node, &tgt->callback_list_head) {
-				struct stap_task_finder_target *cb_tgt;
-				cb_tgt = list_entry(cb_node,
-						    struct stap_task_finder_target,
-						    callback_list);
-				if (cb_tgt == NULL
-				    || cb_tgt->callback == NULL)
-				    continue;
-					
-// DRS: handle error here...
-				cb_tgt->callback(tsk, 1, cb_tgt);
-			}
-		}
-	}
-	kfree(mmpath_buf);
-	return UTRACE_ACTION_RESUME;
-}
-
 
 struct utrace_engine_ops __stp_utrace_task_finder_ops = {
 	.report_clone = __stp_utrace_task_finder_clone,
 	.report_exec = __stp_utrace_task_finder_exec,
-	.report_death = __stp_utrace_task_finder_death,
 };
 
 int

@@ -1,3 +1,12 @@
+2008-04-01  David Smith  <dsmith@redhat.com>
+
+	* utrace.c (struct stap_task_finder_target): Added new members to
+	handle thread death notification.
+	(__stp_task_finder_cleanup): Detaches probe-specific utrace
+	engines.
+	(__stp_utrace_task_finder_exec): Sets up probe-specific utrace
+	engine to handle death notification.
+
 2008-03-31  David Smith  <dsmith@redhat.com>
 
 	* utrace.c: Renamed all internal variables and functions to be
