@@ -1,3 +1,13 @@
+2008-04-03  David Smith  <dsmith@redhat.com>
+
+	* tapsets.cxx (uprobe_derived_probe_group::emit_module_decls):
+	Removed debug prints and initialization of 'pathlen'.  Added
+	'engine_attached' member to struct stap_utrace_probe.
+	(utrace_derived_probe_group::emit_module_init): Removed debug
+	prints.  Unregisters probes if registration fails.
+	(utrace_derived_probe_group::emit_module_exit): Unregisters
+	probes.
+
 2008-03-31  David Smith  <dsmith@redhat.com>
 
 	* tapsets.cxx (output_utrace_config): New function.
