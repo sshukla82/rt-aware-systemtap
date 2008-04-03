@@ -1,3 +1,8 @@
+2008-04-03  David Smith  <dsmith@redhat.com>
+
+	* utrace.c (struct stap_task_finder_target): Cleanup.  Removed
+	debug messages and dead code.
+
 2008-04-01  David Smith  <dsmith@redhat.com>
 
 	* utrace.c (struct stap_task_finder_target): Added new members to
