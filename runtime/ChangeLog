@@ -1,5 +1,7 @@
 2008-04-04  David Smith  <dsmith@redhat.com>
 
+	* task_finder.c: Renamed file from 'utrace.c'.
+
 	* utrace.c: Renamed all 'stap_utrace_task_finder_*' items to
 	'stap_task_finder_*' items.
 
