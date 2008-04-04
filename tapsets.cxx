@@ -4474,7 +4474,7 @@ uprobe_derived_probe_group::emit_module_init (systemtap_session& s)
   s.op->newline(-1) << "}";
   s.op->newline() << "else sup->registered_p = 1;";
 #else
-  s.op->newline() << "stap_register_task_finder_target(&sup->tgt);";
+  s.op->newline() << "rc = stap_register_task_finder_target(&sup->tgt);";
   s.op->newline() << "sup->registered_p = 1;";
 #endif
   s.op->newline(-1) << "}";
@@ -4725,15 +4725,15 @@ utrace_derived_probe_group::emit_module_init (systemtap_session& s)
   s.op->newline() << "for (i=0; i<" << num_probes << "; i++) {";
   s.op->indent(1);
   s.op->newline() << "struct stap_utrace_probe *p = &stap_utrace_probes[i];";
-  s.op->newline() << "stap_register_task_finder_target(&p->tgt);";
+  s.op->newline() << "rc = stap_register_task_finder_target(&p->tgt);";
   s.op->newline(-1) << "}";
 
-  s.op->newline() << "rc = stap_utrace_start_task_finder();";
+  s.op->newline() << "rc = stap_start_task_finder();";
 
   // rollback all utrace probes
   s.op->newline() << "if (rc) {";
   s.op->indent(1);
-  s.op->newline() << "stap_utrace_stop_task_finder();";
+  s.op->newline() << "stap_stop_task_finder();";
   s.op->newline() << "for (j=i-1; j>=0; j--) {";
   s.op->indent(1);
   s.op->newline() << "struct stap_utrace_probe *p = &stap_utrace_probes[j];";
@@ -4756,7 +4756,7 @@ utrace_derived_probe_group::emit_module_exit (systemtap_session& s)
   s.op->newline();
   s.op->newline() << "/* ---- utrace probes ---- */";
   // Stop the task finder
-  s.op->newline() << "stap_utrace_stop_task_finder();";
+  s.op->newline() << "stap_stop_task_finder();";
 
   s.op->newline() << "for (i=0; i<" << num_probes << "; i++) {";
   s.op->indent(1);

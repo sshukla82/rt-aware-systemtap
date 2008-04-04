@@ -1,3 +1,8 @@
+2008-04-04  David Smith  <dsmith@redhat.com>
+
+	* utrace.c: Renamed all 'stap_utrace_task_finder_*' items to
+	'stap_task_finder_*' items.
+
 2008-04-03  David Smith  <dsmith@redhat.com>
 
 	* utrace.c (struct stap_task_finder_target): Cleanup.  Removed

@@ -4,8 +4,9 @@ static LIST_HEAD(__stp_task_finder_list);
 
 struct stap_task_finder_target;
 
-typedef int (*stap_utrace_callback)(struct task_struct *tsk, int register_p,
-				    struct stap_task_finder_target *tgt);
+typedef int (*stap_task_finder_callback)(struct task_struct *tsk,
+					 int register_p,
+					 struct stap_task_finder_target *tgt);
 
 struct stap_task_finder_target {
 /* private: */
@@ -19,7 +20,7 @@ struct stap_task_finder_target {
 /* public: */
     	const char *pathname;
 	pid_t pid;
-	stap_utrace_callback callback;
+	stap_task_finder_callback callback;
 };
 
 static int
@@ -138,7 +139,7 @@ __stp_task_finder_cleanup(void)
 }
 
 static char *
-__stp_utrace_get_mm_path(struct mm_struct *mm, char *buf, int buflen)
+__stp_get_mm_path(struct mm_struct *mm, char *buf, int buflen)
 {
 	struct vm_area_struct *vma;
 	char *rc = NULL;
@@ -301,7 +302,7 @@ struct utrace_engine_ops __stp_utrace_task_finder_ops = {
 };
 
 int
-stap_utrace_start_task_finder(void)
+stap_start_task_finder(void)
 {
 	int rc = 0;
 	struct task_struct *tsk;
@@ -351,7 +352,7 @@ stap_utrace_start_task_finder(void)
 		utrace_set_flags(tsk, engine, __STP_UTRACE_TASK_FINDER_EVENTS);
 
 		/* Check the thread's exe's path/pid against our list. */
-		mmpath = __stp_utrace_get_mm_path(mm, mmpath_buf, PATH_MAX);
+		mmpath = __stp_get_mm_path(mm, mmpath_buf, PATH_MAX);
 		mmput(mm);		/* We're done with mm */
 		if (IS_ERR(mmpath)) {
 			rc = -PTR_ERR(mmpath);
@@ -402,7 +403,7 @@ stap_utrace_start_task_finder(void)
 }
 
 static void
-stap_utrace_stop_task_finder(void)
+stap_stop_task_finder(void)
 {
 	stap_utrace_detach_ops(&__stp_utrace_task_finder_ops);
 	__stp_task_finder_cleanup();
