@@ -1198,6 +1198,7 @@ systemtap_session::systemtap_session ():
   dwarf_derived_probes(0), 
   uprobe_derived_probes(0), 
   utrace_derived_probes(0), 
+  task_finder_derived_probes(0), 
   timer_derived_probes(0), 
   profile_derived_probes(0), 
   mark_derived_probes(0), 

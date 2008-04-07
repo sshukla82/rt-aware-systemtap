@@ -296,25 +296,6 @@ common_probe_entryfn_epilogue (translator_output* o,
 }
 
 
-void
-output_utrace_config (systemtap_session& s)
-{
-  static bool output_utrace_config_p = true;
-
-  if (output_utrace_config_p)
-    {
-      output_utrace_config_p = false;
-      s.op->newline() << "#if ! defined(CONFIG_UTRACE)";
-      s.op->newline() << "#error \"Need CONFIG_UTRACE!\"";
-      s.op->newline() << "#endif";
-      s.op->newline() << "#include <linux/utrace.h>";
-      s.op->newline() << "#include <linux/mount.h>";
-      s.op->newline() << "#include \"utrace.c\"";
-      s.op->newline();
-    }
-}
-
-
 // ------------------------------------------------------------------------
 
 void
@@ -4263,6 +4244,95 @@ dwarf_builder::build(systemtap_session & sess,
 }
 
 
+// ------------------------------------------------------------------------
+// task_finder derived 'probes': These don't really exist.  The whole
+// purpose of the task_finder_derived_probe_group is to make sure that
+// stap_start_task_finder()/stap_stop_task_finder() get called only
+// once and in the right place.
+// ------------------------------------------------------------------------
+
+struct task_finder_derived_probe: public derived_probe
+{
+};
+
+
+struct task_finder_derived_probe_group: public generic_dpg<task_finder_derived_probe>
+{
+public:
+  static void create_session_group (systemtap_session& s);
+  static void emit_initialization (systemtap_session& s);
+
+  void emit_module_decls (systemtap_session& s);
+  void emit_module_init (systemtap_session& s);
+  void emit_module_exit (systemtap_session& s);
+};
+
+
+void
+task_finder_derived_probe_group::create_session_group (systemtap_session& s)
+{
+  if (! s.task_finder_derived_probes)
+    s.task_finder_derived_probes = new task_finder_derived_probe_group();
+}
+
+
+void
+task_finder_derived_probe_group::emit_initialization (systemtap_session& s)
+{
+  static bool output_p = true;
+
+  if (output_p)
+    {
+      output_p = false;
+      // Warn of misconfigured kernels
+      s.op->newline() << "#if ! defined(CONFIG_UTRACE)";
+      s.op->newline() << "#error \"Need CONFIG_UTRACE!\"";
+      s.op->newline() << "#endif";
+      s.op->newline() << "#include <linux/utrace.h>";
+      s.op->newline() << "#include <linux/mount.h>";
+      s.op->newline() << "#include \"utrace.c\"";
+      s.op->newline();
+    }
+}
+
+
+void
+task_finder_derived_probe_group::emit_module_decls (systemtap_session& s)
+{
+    // We'd like to be able to output the stuff output by
+    // emit_initialization() here, but this gets called too late.  So,
+    // there is nothing to do here.
+}
+
+
+void
+task_finder_derived_probe_group::emit_module_init (systemtap_session& s)
+{
+  if (s.utrace_derived_probes == NULL && s.uprobe_derived_probes == NULL)
+    return;
+
+  s.op->newline();
+  s.op->newline() << "/* ---- task finder ---- */";
+  s.op->newline() << "rc = stap_start_task_finder();";
+
+  s.op->newline() << "if (rc) {";
+  s.op->indent(1);
+  s.op->newline() << "stap_stop_task_finder();";
+  s.op->newline(-1) << "}";
+}
+
+
+void
+task_finder_derived_probe_group::emit_module_exit (systemtap_session& s)
+{
+  if (s.utrace_derived_probes == NULL && s.uprobe_derived_probes == NULL)
+    return;
+
+  s.op->newline();
+  s.op->newline() << "/* ---- task finder ---- */";
+  s.op->newline() << "stap_stop_task_finder();";
+}
+
 
 // ------------------------------------------------------------------------
 // user-space probes
@@ -4309,6 +4379,8 @@ uprobe_derived_probe::join_group (systemtap_session& s)
   if (! s.uprobe_derived_probes)
     s.uprobe_derived_probes = new uprobe_derived_probe_group ();
   s.uprobe_derived_probes->enroll (this);
+
+  task_finder_derived_probe_group::create_session_group (s);
 }
 
 
@@ -4344,7 +4416,7 @@ uprobe_derived_probe_group::emit_module_decls (systemtap_session& s)
 {
   if (probes.empty()) return;
   s.op->newline() << "/* ---- user probes ---- */";
-  output_utrace_config(s);
+  task_finder_derived_probe_group::emit_initialization(s);
 
   // If uprobes isn't in the kernel, pull it in from the runtime.
   s.op->newline() << "#if defined(CONFIG_UPROBES) || defined(CONFIG_UPROBES_MODULE)";
@@ -4546,6 +4618,8 @@ utrace_derived_probe::join_group (systemtap_session& s)
   if (! s.utrace_derived_probes)
     s.utrace_derived_probes = new utrace_derived_probe_group ();
   s.utrace_derived_probes->enroll (this);
+
+  task_finder_derived_probe_group::create_session_group (s);
 }
 
 
@@ -4594,9 +4668,7 @@ utrace_derived_probe_group::emit_module_decls (systemtap_session& s)
 
   s.op->newline();
   s.op->newline() << "/* ---- utrace probes ---- */";
-
-  // Warn of misconfigured kernels
-  output_utrace_config(s);
+  task_finder_derived_probe_group::emit_initialization(s);
 
   s.op->newline() << "struct stap_utrace_probe {";
   s.op->indent(1);
@@ -4728,12 +4800,9 @@ utrace_derived_probe_group::emit_module_init (systemtap_session& s)
   s.op->newline() << "rc = stap_register_task_finder_target(&p->tgt);";
   s.op->newline(-1) << "}";
 
-  s.op->newline() << "rc = stap_start_task_finder();";
-
   // rollback all utrace probes
   s.op->newline() << "if (rc) {";
   s.op->indent(1);
-  s.op->newline() << "stap_stop_task_finder();";
   s.op->newline() << "for (j=i-1; j>=0; j--) {";
   s.op->indent(1);
   s.op->newline() << "struct stap_utrace_probe *p = &stap_utrace_probes[j];";
@@ -4755,9 +4824,6 @@ utrace_derived_probe_group::emit_module_exit (systemtap_session& s)
 
   s.op->newline();
   s.op->newline() << "/* ---- utrace probes ---- */";
-  // Stop the task finder
-  s.op->newline() << "stap_stop_task_finder();";
-
   s.op->newline() << "for (i=0; i<" << num_probes << "; i++) {";
   s.op->indent(1);
   s.op->newline() << "struct stap_utrace_probe *p = &stap_utrace_probes[i];";
@@ -7014,14 +7080,19 @@ all_session_groups(systemtap_session& s)
   // c_unparser::emit_module_exit() will run this list backwards.
   DOONE(be);
   DOONE(dwarf);
-  DOONE(uprobe);
-  DOONE(utrace);
   DOONE(timer);
   DOONE(profile);
   DOONE(mark);
   DOONE(hrtimer);
   DOONE(perfmon);
   DOONE(procfs);
+
+  // Another "order is important" item.  We want to make sure we
+  // "register" the dummy task_finder probe group after all probe
+  // groups that use the task_finder.
+  DOONE(uprobe);
+  DOONE(utrace);
+  DOONE(task_finder);
 #undef DOONE
   return g;
 }

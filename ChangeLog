@@ -1,3 +1,23 @@
+2008-04-07  David Smith  <dsmith@redhat.com>
+
+	* tapsets.cxx: Added task_finder_derived_probe and
+	task_finder_derived_probe_group.  These aren't a real probe/probe
+	group, they are only present to make sure stap_start_task_finder
+	and stap_stop_task_finder get called only once and in the right
+	place.
+	(uprobe_derived_probe::join_group): Calls
+	task_finder_derived_probe_group::create_session_group().
+	(utrace_derived_probe::join_group): Ditto.
+	(uprobe_derived_probe_group::emit_module_decls): Calls
+	task_finder_derived_probe_group::emit_initialization().
+	(utrace_derived_probe_group::emit_module_decls): Ditto.
+	(all_session_groups): Added task_finder_probe_group to list of
+	probe groups to be handled.
+	* session.h (struct systemtap_session): Added
+	task_finder_derived_probe_group.
+	* elaborate.cxx (systemtap_session::systemtap_session):
+	Initializes task_finder_derived_probes.
+
 2008-04-04  David Smith  <dsmith@redhat.com>
 
 	* tapsets.cxx (utrace_derived_probe_group::emit_module_init):
