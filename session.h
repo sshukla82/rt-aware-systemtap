@@ -88,10 +88,8 @@ struct systemtap_session
   bool timing;
   bool keep_tmpdir;
   bool guru_mode;
+  bool listing_mode;
   bool bulk_mode;
-  bool list_mode;
-  std::string list_class;
-  std::string list_pattern;
   bool unoptimized;
   bool merge;
   bool suppress_warnings;
