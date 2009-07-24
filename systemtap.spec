@@ -80,7 +80,7 @@ Summary: Instrumentation System Testsuite
 Group: Development/System
 License: GPLv2+
 URL: http://sourceware.org/systemtap/
-Requires: systemtap dejagnu
+Requires: systemtap systemtap-sdt-devel dejagnu
 
 %description testsuite
 The testsuite allows testing of the entire SystemTap toolchain
@@ -265,10 +265,12 @@ exit 0
 %post
 # Remove any previously-built uprobes.ko materials
 (make -C /usr/share/systemtap/runtime/uprobes clean) >/dev/null 3>&1 || true
+(/sbin/rmmod uprobes) >/dev/null 3>&1 || true
 
 %preun
 # Ditto
 (make -C /usr/share/systemtap/runtime/uprobes clean) >/dev/null 3>&1 || true
+(/sbin/rmmod uprobes) >/dev/null 3>&1 || true
 
 %files
 %defattr(-,root,root)

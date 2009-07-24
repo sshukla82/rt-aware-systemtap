@@ -67,13 +67,19 @@ function task_pid:long (task:long)
 function pid2task:long (pid:long) %{ /* pure */
     struct task_struct *t = NULL;
     pid_t t_pid  = (pid_t)(long)THIS->pid;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,31)
+    struct pid *p_pid = find_get_pid(t_pid);
+    t = pid_task(p_pid, PIDTYPE_PID);
+    put_pid(p_pid);
+#else
     rcu_read_lock();
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,24)
-      t = find_task_by_vpid (t_pid);
+    t = find_task_by_vpid (t_pid);
 #else
-      t = find_task_by_pid (t_pid);
-#endif
+    t = find_task_by_pid (t_pid);
+#endif /* 2.6.24 */
     rcu_read_unlock();
+#endif /* 2.6.31 */
     THIS->__retvalue = (long)t;
     CATCH_DEREF_FAULT();
 %}
@@ -189,10 +195,13 @@ function task_cpu:long (task:long)
 function task_open_file_handles:long (task:long)
 %( kernel_v >= "2.6.15" %?
 %{ /* pure */
-    struct task_struct *t = (struct task_struct *)(long)THIS->task;
-    struct files_struct *fs = kread(&(t->files));
-    struct fdtable *f = kread(&(fs->fdt));
     unsigned int count=0, fd, max;
+    struct task_struct *t;
+    struct files_struct *fs;
+    struct fdtable *f;
+    t = (struct task_struct *)(long)THIS->task;
+    fs = kread(&(t->files));
+    f = kread(&(fs->fdt));
     rcu_read_lock();
     max = kread(&(f->max_fds));
     for (fd = 0; fd < max; fd++) {
@@ -205,9 +214,11 @@ function task_open_file_handles:long (task:long)
 %}
 %:
 %{ /* pure */
-    struct task_struct *t = (struct task_struct *)(long)THIS->task;
-    struct files_struct *f = kread(&(t->files));
     unsigned int count=0, fd, max;
+    struct task_struct *t;
+    struct files_struct *f;
+    t = (struct task_struct *)(long)THIS->task;
+    f = kread(&(t->files));
     rcu_read_lock();
     max = kread(&(f->max_fds));
     for (fd = 0; fd < max; fd++) {
@@ -225,9 +236,12 @@ function task_open_file_handles:long (task:long)
 function task_max_file_handles:long (task:long)
 %( kernel_v >= "2.6.15" %?
 %{ /* pure */
-    struct task_struct *t = (struct task_struct *)(long)THIS->task;
-    struct files_struct *fs = kread (&(t->files));
-    struct fdtable *f = kread(&(fs->fdt));
+    struct task_struct *t;
+    struct files_struct *fs;
+    struct fdtable *f;
+    t = (struct task_struct *)(long)THIS->task;
+    fs = kread (&(t->files));
+    f = kread(&(fs->fdt));
     rcu_read_lock();
     THIS->__retvalue = kread(&(f->max_fds));
     rcu_read_unlock();
@@ -235,8 +249,10 @@ function task_max_file_handles:long (task:long)
 %}
 %:
 %{ /* pure */
-    struct task_struct *t = (struct task_struct *)(long)THIS->task;
-    struct files_struct *f = kread(&(t->files));
+    struct task_struct *t;
+    struct files_struct *f;
+    t = (struct task_struct *)(long)THIS->task;
+    f = kread(&(t->files));
     rcu_read_lock();
     THIS->__retvalue = kread(&(f->max_fds));
     rcu_read_unlock();

@@ -12,6 +12,9 @@
 #include <locale.h>
 #include <argp.h>
 #include <elfutils/libdwfl.h>
+#ifdef HAVE_ELFUTILS_VERSION_H
+#include <elfutils/version.h>
+#endif
 #include <dwarf.h>
 #include <obstack.h>
 #include <unistd.h>
@@ -75,7 +78,7 @@ get_location (Dwarf_Addr dwbias, Dwarf_Addr pc, Dwarf_Attribute *loc_attr,
 static void
 handle_variable (Dwarf_Die *scopes, int nscopes, int out,
 		 Dwarf_Addr cubias, Dwarf_Die *vardie, Dwarf_Addr pc,
-		 char **fields)
+		 Dwarf_Op *cfa_ops, char **fields)
 {
 #define obstack_chunk_alloc malloc
 #define obstack_chunk_free free
@@ -121,7 +124,7 @@ handle_variable (Dwarf_Die *scopes, int nscopes, int out,
   struct location *head, *tail = NULL;
   head = c_translate_location (&pool, &fail, NULL, NULL,
 			       1, cubias, pc, locexpr, locexpr_len,
-			       &tail, fb_attr);
+			       &tail, fb_attr, cfa_ops);
 
   if (dwarf_attr_integrate (vardie, DW_AT_type, &attr_mem) == NULL)
     error (2, 0, _("cannot get type of variable: %s"),
@@ -214,10 +217,35 @@ handle_variable (Dwarf_Die *scopes, int nscopes, int out,
 	    }
 	  else
 	    {
-	      locexpr = get_location (cubias, pc, &attr_mem, &locexpr_len);
-	      c_translate_location (&pool, NULL, NULL, NULL,
-				    1, cubias, pc, locexpr, locexpr_len,
-				    &tail, NULL);
+	      /* We are expection a block, constant or loclistptr. */
+	      unsigned int form = dwarf_whatform (&attr_mem);
+	      Dwarf_Sword off;
+	      switch (form)
+		{
+		/* constant */
+		case DW_FORM_data1:
+		case DW_FORM_data2:
+		case DW_FORM_sdata:
+		case DW_FORM_udata:
+		  if (dwarf_formsdata (&attr_mem, &off) != 0)
+		    error (2, 0, _("Bad offset for %s %s: %s"),
+			   typetag == DW_TAG_union_type ? "union" : "struct",
+			   dwarf_diename_integrate (die) ?: "<anonymous>",
+			   dwarf_errmsg (-1));
+		    if (off != 0)
+		      c_translate_add_offset (&pool, 1,
+					      dwarf_diename_integrate (die)
+					      ?: "", off, &tail);
+		  break;
+
+		default:
+		    locexpr = get_location (cubias, pc, &attr_mem,
+					    &locexpr_len);
+		    c_translate_location (&pool, NULL, NULL, NULL,
+					  1, cubias, pc, locexpr, locexpr_len,
+					  &tail, NULL, NULL);
+		    break;
+		}
 	    }
 	  ++fields;
 	  break;
@@ -378,6 +406,9 @@ static void
 print_vars (unsigned int indent, Dwarf_Die *die)
 {
   Dwarf_Die child;
+  Dwarf_Attribute attr_mem;
+  Dwarf_Die typedie_mem;
+  Dwarf_Die *typedie;
   if (dwarf_child (die, &child) == 0)
     do
       switch (dwarf_tag (&child))
@@ -387,9 +418,7 @@ print_vars (unsigned int indent, Dwarf_Die *die)
 	  printf ("%*s%-30s[%6" PRIx64 "]", indent, "",
 		  dwarf_diename (&child),
 		  (uint64_t) dwarf_dieoffset (&child));
-	  Dwarf_Attribute attr_mem;
-	  Dwarf_Die typedie_mem;
-	  Dwarf_Die *typedie = dwarf_formref_die
+	  typedie = dwarf_formref_die
 	    (dwarf_attr_integrate (&child, DW_AT_type, &attr_mem),
 	     &typedie_mem);
 	  print_type (typedie, '\t');
@@ -495,7 +524,41 @@ main (int argc, char **argv)
 	error (0, 0, "dwarf_getscopevar: %s (+%d, %s:%d:%d): %s",
 	       spec, shadow, at, lineno, colno, dwarf_errmsg (-1));
       else
-	handle_variable (scopes, n, out, cubias, &vardie, pc, &argv[argi]);
+	{
+	  Dwarf_Op *cfa_ops = NULL;
+
+#ifdef _ELFUTILS_PREREQ
+#if _ELFUTILS_PREREQ(0,142)
+	  size_t cfa_nops;
+	  Dwarf_Addr bias;
+	  Dwfl_Module *module = dwfl_addrmodule (dwfl, pc);
+	  if (module != NULL)
+	    {
+	      // Try debug_frame first, then fall back on eh_frame.
+	      Dwarf_CFI *cfi = dwfl_module_dwarf_cfi (module, &bias);
+	      if (cfi != NULL)
+		{
+		  Dwarf_Frame *frame = NULL;
+		  if (dwarf_cfi_addrframe (cfi, pc, &frame) == 0)
+		    dwarf_frame_cfa (frame, &cfa_ops, &cfa_nops);
+		}
+	      if (cfa_ops == NULL)
+		{
+		  cfi = dwfl_module_eh_cfi (module, &bias);
+		  if (cfi != NULL)
+		    {
+		      Dwarf_Frame *frame = NULL;
+		      if (dwarf_cfi_addrframe (cfi, pc, &frame) == 0)
+			dwarf_frame_cfa (frame, &cfa_ops, &cfa_nops);
+		    }
+		}
+	    }
+#endif
+#endif	  
+
+	  handle_variable (scopes, n, out, cubias, &vardie, pc, cfa_ops,
+			   &argv[argi]);
+	}
     }
 
   free (scopes);

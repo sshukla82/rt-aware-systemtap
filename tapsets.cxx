@@ -48,7 +48,6 @@ extern "C" {
 #include <stdio.h>
 #include <sys/types.h>
 
-#include "loc2c.h"
 #define __STDC_FORMAT_MACROS
 #include <inttypes.h>
 }
@@ -282,24 +281,20 @@ symbol_table
 {
   module_info *mod_info;	// associated module
   map<string, func_info*> map_by_name;
-  vector<func_info*> list_by_addr;
-  typedef vector<func_info*>::iterator iterator_t;
+  multimap<Dwarf_Addr, func_info*> map_by_addr;
+  typedef multimap<Dwarf_Addr, func_info*>::iterator iterator_t;
   typedef pair<iterator_t, iterator_t> range_t;
 #ifdef __powerpc__
   GElf_Word opd_section;
 #endif
-  // add_symbol doesn't leave symbol table in order; call
-  // symbol_table::sort() when done adding symbols.
   void add_symbol(const char *name, bool weak, Dwarf_Addr addr,
                                                Dwarf_Addr *high_addr);
-  void sort();
   enum info_status read_symbols(FILE *f, const string& path);
   enum info_status read_from_elf_file(const string& path);
   enum info_status read_from_text_file(const string& path);
   enum info_status get_from_elf();
   void prepare_section_rejection(Dwfl_Module *mod);
   bool reject_section(GElf_Word section);
-  void mark_dwarf_redundancies(dwflpp *dw);
   void purge_syscall_stubs();
   func_info *lookup_symbol(const string& name);
   Dwarf_Addr lookup_symbol_address(const string& name);
@@ -313,15 +308,6 @@ static bool null_die(Dwarf_Die *die)
 {
   static Dwarf_Die null = { 0 };
   return (!die || !memcmp(die, &null, sizeof(null)));
-}
-
-
-// PR 9941 introduces the need for a predicate
-
-int dwfl_report_offline_predicate (const char* modname, const char* filename)
-{
-  if (pending_interrupts) { return -1; }
-  return 1;
 }
 
 
@@ -529,8 +515,7 @@ base_query::get_number_param(literal_map_t const & params,
 
 struct dwarf_query : public base_query
 {
-  dwarf_query(systemtap_session & sess,
-	      probe * base_probe,
+  dwarf_query(probe * base_probe,
 	      probe_point * base_loc,
 	      dwflpp & dw,
 	      literal_map_t const & params,
@@ -602,34 +587,36 @@ struct dwarf_query : public base_query
 
 struct dwarf_builder: public derived_probe_builder
 {
-  dwflpp *kern_dw;
+  map <string,dwflpp*> kern_dw; /* NB: key string could be a wildcard */
   map <string,dwflpp*> user_dw;
-  dwarf_builder(): kern_dw(0) {}
+  dwarf_builder() {}
 
-  dwflpp *get_kern_dw(systemtap_session& sess)
+  dwflpp *get_kern_dw(systemtap_session& sess, const string& module)
   {
-    if (!kern_dw)
-      kern_dw = new dwflpp(sess);
-    return kern_dw;
+    if (kern_dw[module] == 0)
+      kern_dw[module] = new dwflpp(sess, module, true); // might throw
+    return kern_dw[module];
   }
 
   dwflpp *get_user_dw(systemtap_session& sess, const string& module)
   {
-    if (user_dw.find(module) == user_dw.end())
-      user_dw[module] = new dwflpp(sess, module);
+    if (user_dw[module] == 0)
+      user_dw[module] = new dwflpp(sess, module, false); // might throw
     return user_dw[module];
   }
 
   /* NB: not virtual, so can be called from dtor too: */
   void dwarf_build_no_more (bool verbose)
   {
-    if (kern_dw)
+    for (map<string,dwflpp*>::iterator udi = kern_dw.begin();
+         udi != kern_dw.end();
+         udi ++)
       {
         if (verbose)
-          clog << "dwarf_builder releasing kernel dwflpp" << endl;
-        delete kern_dw;
-        kern_dw = 0;
+          clog << "dwarf_builder releasing kernel dwflpp " << udi->first << endl;
+        delete udi->second;
       }
+    kern_dw.erase (kern_dw.begin(), kern_dw.end());
 
     for (map<string,dwflpp*>::iterator udi = user_dw.begin();
          udi != user_dw.end();
@@ -657,261 +644,10 @@ struct dwarf_builder: public derived_probe_builder
 		     probe_point * location,
 		     literal_map_t const & parameters,
 		     vector<derived_probe *> & finished_results);
-
-  set<string> probes_handled;
-  struct probe_table
-  {
-  public:
-    enum probe_types
-      {
-	uprobe_type = 0x31425250, // "PRB1"
-	kprobe_type = 0x32425250, // "PRB2"
-	utrace_type = 0x33425250, // "PRB3"
-      } probe_type;
-    __uint64_t probe_arg;
-    string & mark_name;
-    string probe_name;
-    probe_table(string & mark_name, systemtap_session & sess, dwflpp * dw);
-    bool get_next_probe();
-    void convert_probe(probe *new_base);
-    void convert_location(probe *new_base, probe_point *new_location);
-
-  private:
-    bool have_probes;
-    systemtap_session & sess;
-    dwflpp* dw;
-    Elf_Data *pdata;
-    size_t probe_scn_offset;
-    size_t probe_scn_addr;
-  };
 };
 
-dwarf_builder::probe_table::probe_table(string& mark_name, systemtap_session & sess, dwflpp* dw):
-  mark_name(mark_name), sess(sess), dw(dw)
-{
-  Elf* elf;
-  GElf_Shdr shdr_mem;
-  GElf_Shdr *shdr = NULL;
-  Dwarf_Addr bias;
-  size_t shstrndx;
 
-  // Explicitly look in the main elf file first.
-  elf = dwfl_module_getelf (dw->module, &bias);
-  Elf_Scn *probe_scn = NULL;
-
-  dwfl_assert ("getshdrstrndx", elf_getshdrstrndx (elf, &shstrndx));
-
-  have_probes = false;
-  
-  // Is there a .probes section?
-  while ((probe_scn = elf_nextscn (elf, probe_scn)))
-    {
-      shdr = gelf_getshdr (probe_scn, &shdr_mem);
-      assert (shdr != NULL);
-
-      if (strcmp (elf_strptr (elf, shstrndx, shdr->sh_name), ".probes") == 0)
-	{
-	  have_probes = true;
-	  break;
-	}
-    }
-
-  // Older versions put .probes section in the debuginfo dwarf file,
-  // so check if it actually exists, if not take a look in the debuginfo file
-  if (! have_probes || (have_probes && shdr->sh_type == SHT_NOBITS))
-    {
-      elf = dwarf_getelf (dwfl_module_getdwarf (dw->module, &bias));
-      if (! elf)
-	return;
-      dwfl_assert ("getshdrstrndx", elf_getshdrstrndx (elf, &shstrndx));
-      probe_scn = NULL;
-      while ((probe_scn = elf_nextscn (elf, probe_scn)))
-	{
-	  shdr = gelf_getshdr (probe_scn, &shdr_mem);
-	  if (strcmp (elf_strptr (elf, shstrndx, shdr->sh_name),
-		      ".probes") == 0)
-	    have_probes = true;
-	    break;
-	}
-    }
-
-  if (!have_probes)
-    return;
-
-  pdata = elf_getdata_rawchunk (elf, shdr->sh_offset, shdr->sh_size, ELF_T_BYTE);
-  probe_scn_offset = 0;
-  probe_scn_addr = shdr->sh_addr;
-  assert (pdata != NULL);
-  if (sess.verbose > 4)
-    clog << "got .probes elf scn_addr@0x" << probe_scn_addr << dec
-	 << ", size: " << pdata->d_size << endl;
-}
-
-bool
-dwarf_builder::probe_table::get_next_probe()
-{
-  if (! have_probes)
-    return false;
-    
-  // Extract probe info from the .probes section
-  if (sess.verbose > 3)
-    clog << "probe_type == use_uprobe, use statement addr" << endl;
- 
-  while (probe_scn_offset < pdata->d_size)
-    {
-      struct probe_entry
-      {
-	__uint64_t name;
-	__uint64_t arg;
-      }  *pbe;
-      __uint32_t *type = (__uint32_t*) ((char*)pdata->d_buf + probe_scn_offset);
-      probe_type = (enum probe_types)*type;
-      if (probe_type != uprobe_type && probe_type != kprobe_type
-	  && probe_type != utrace_type)
-	{
-	  // Unless this is a mangled .probes section, this happens
-	  // because the name of the probe comes first, followed by
-	  // the sentinel.
-	  if (sess.verbose > 5)
-	    clog << "got unknown probe_type: 0x" << hex << probe_type
-		 << dec << endl;
-	  probe_scn_offset += sizeof(__uint32_t);
-	  continue;
-	}
-      probe_scn_offset += sizeof(__uint32_t);
-      probe_scn_offset += probe_scn_offset % sizeof(__uint64_t);
-      pbe = (struct probe_entry*) ((char*)pdata->d_buf + probe_scn_offset);
-      probe_name = (char*)((char*)pdata->d_buf + pbe->name - (char*)probe_scn_addr);
-      probe_arg = pbe->arg;
-      if (sess.verbose > 4)
-	clog << "saw .probes " << probe_name
-	     << "@0x" << hex << probe_arg << dec << endl;
-    
-      probe_scn_offset += sizeof (struct probe_entry);
-      if ((mark_name == probe_name)
-	  || (dw->name_has_wildcard (mark_name)
-	      && dw->function_name_matches_pattern (probe_name, mark_name)))
-	{
-	  if (sess.verbose > 3)
-	    clog << "found probe_name" << probe_name << " at 0x"
-		 << hex << probe_arg << dec << endl;
-	  return true;
-	}
-      else
-	continue;
-    }
-  return false;
-}
-
-
-void
-dwarf_builder::probe_table::convert_probe (probe *new_base)
-{
-  block *b = ((block*)(new_base->body));
-  if (probe_type == utrace_type)
-    {
-      // Generate: if ($syscall != 0xbead) next;
-      if_statement *issc = new if_statement;
-      issc->thenblock = new next_statement;
-      issc->elseblock = NULL;
-      issc->tok = new_base->body->tok;
-      comparison *besc = new comparison;
-      besc->op = "!=";
-      besc->tok = new_base->body->tok;
-      functioncall* n = new functioncall;
-      n->tok = new_base->body->tok;
-      n->function = "_utrace_syscall_nr";
-      n->referent = 0;
-      besc->left = n;
-      literal_number* fake_syscall = new literal_number(0xbead);
-      fake_syscall->tok = new_base->body->tok;
-      besc->right = fake_syscall;
-      issc->condition = besc;
-      b->statements.insert(b->statements.begin(),(statement*) issc);
-
-      // Generate: if (ulong_arg(2) != task_tid(task_current())) next;
-      if_statement *istid = new if_statement;
-      istid->thenblock = new next_statement;
-      istid->elseblock = NULL;
-      istid->tok = new_base->body->tok;
-      comparison *betid = new comparison;
-      betid->op = "!=";
-      betid->tok = new_base->body->tok;
-      functioncall* task_tid = new functioncall;
-      task_tid->tok = new_base->body->tok;
-      task_tid->function = "task_tid";
-      task_tid->referent = 0;
-      functioncall* task_current = new functioncall;
-      task_current->tok = new_base->body->tok;
-      task_current->function = "task_current";
-      task_current->referent = 0;
-      task_tid->args.push_back(task_current);
-      betid->left = task_tid;
-      functioncall *arg2tid = new functioncall;
-      arg2tid->tok = new_base->body->tok;
-      arg2tid->function = "ulong_arg";
-      arg2tid->tok = new_base->body->tok;
-      literal_number* littid = new literal_number(2);
-      littid->tok = new_base->body->tok;
-      arg2tid->args.push_back(littid);
-
-      betid->right = arg2tid;
-      istid->condition = betid;
-      b->statements.insert(b->statements.begin(),(statement*) istid);
-    }
-  
-  // Generate: if (arg1 != mark("label")) next;
-  functioncall *fc = new functioncall;
-  fc->function = "ulong_arg";
-  fc->tok = new_base->body->tok;
-  literal_number* num = new literal_number(1);
-  num->tok = new_base->body->tok;
-  fc->args.push_back(num);
-
-  functioncall *fcus = new functioncall;
-  fcus->function = "user_string";
-  fcus->type = pe_string;
-  fcus->tok = new_base->body->tok;
-  fcus->args.push_back(fc);
-
-  if_statement *is = new if_statement;
-  is->thenblock = new next_statement;
-  is->elseblock = NULL;
-  is->tok = new_base->body->tok;
-  comparison *be = new comparison;
-  be->op = "!=";
-  be->tok = new_base->body->tok;
-  be->left = fcus;
-  be->right = new literal_string(mark_name);
-  is->condition = be;
-  b->statements.insert(b->statements.begin(),(statement*) is);
-}
-
-
-void
-dwarf_builder::probe_table::convert_location (probe *new_base,
-					      probe_point *new_location)
-{
-  if (probe_type == kprobe_type)
-    {
-      new_location->components[0]->functor = "kernel";
-      new_location->components[0]->arg = NULL;
-      new_location->components[1]->functor = "function";
-      new_location->components[1]->arg = new literal_string("*getegid*");
-      new_base->locations.push_back(new_location);
-    }
-  else if (probe_type == utrace_type)
-    {
-      // process("executable").syscall
-      new_location->components[1]->functor = "syscall";
-      new_location->components[1]->arg = NULL;
-      new_base->locations.push_back(new_location);
-    }
-}
-
-
-dwarf_query::dwarf_query(systemtap_session & sess,
-			 probe * base_probe,
+dwarf_query::dwarf_query(probe * base_probe,
 			 probe_point * base_loc,
 			 dwflpp & dw,
 			 literal_map_t const & params,
@@ -1045,11 +781,11 @@ dwarf_query::query_module_symtab()
               return;
             }
           symbol_table::iterator_t iter;
-          for (iter = sym_table->list_by_addr.begin();
-               iter != sym_table->list_by_addr.end();
+          for (iter = sym_table->map_by_addr.begin();
+               iter != sym_table->map_by_addr.end();
                ++iter)
             {
-              fi = *iter;
+              fi = iter->second;
               if (!null_die(&fi->die))
                 continue;       // already handled in query_module_dwarf()
               if (dw.function_name_matches_pattern(fi->name, function_str_val))
@@ -1097,10 +833,15 @@ dwarf_query::query_module_symtab()
 void
 dwarf_query::handle_query_module()
 {
-  dw.get_module_dwarf(false,
-              (dbinfo_reqt == dbr_need_dwarf || !sess.consult_symtab));
+  bool report = dbinfo_reqt == dbr_need_dwarf || !sess.consult_symtab;
+  dw.get_module_dwarf(false, report);
+
+  // prebuild the symbol table to resolve aliases
+  dw.mod_info->get_symtab(this);
+
   if (dw.mod_info->dwarf_status == info_present)
     query_module_dwarf();
+
   // Consult the symbol table if we haven't found all we're looking for.
   // asm functions can show up in the symbol table but not in dwarf.
   if (sess.consult_symtab && !query_done)
@@ -1518,8 +1259,7 @@ query_dwarf_func (Dwarf_Die * func, base_query * bq)
 
       if (q->dw.func_is_inline ()
           && (! q->has_call) && (! q->has_return)
-	  && (((q->has_statement_str || q->has_function_str)
-	       && q->dw.function_name_matches(q->function))))
+	  && (q->has_statement_str || q->has_function_str))
 	{
 	  if (q->sess.verbose>3)
 	    clog << "checking instances of inline " << q->dw.function_name
@@ -1533,8 +1273,7 @@ query_dwarf_func (Dwarf_Die * func, base_query * bq)
 	{
 	  bool record_this_function = false;
 
-	  if ((q->has_statement_str || q->has_function_str)
-	      && q->dw.function_name_matches(q->function))
+	  if (q->has_statement_str || q->has_function_str)
 	    {
 	      record_this_function = true;
 	    }
@@ -2321,6 +2060,9 @@ dwarf_var_expanding_visitor::visit_target_symbol (target_symbol *e)
       if (dwarf_getscopes_die (scope_die, &scopes) == 0)
 	return;
 
+      if (e->addressof)
+        throw semantic_error("cannot take address of context variable", e->tok);
+
       target_symbol *tsym = new target_symbol;
       print_format* pf = new print_format;
 
@@ -2635,7 +2377,7 @@ void dwarf_cast_expanding_visitor::filter_special_modules(string& module)
       if (s.use_cache)
         {
           // see if the cached module exists
-          find_typequery_hash(s, module, cached_module);
+          cached_module = find_typequery_hash(s, module);
           if (!cached_module.empty())
             {
               int fd = open(cached_module.c_str(), O_RDONLY);
@@ -2697,7 +2439,7 @@ void dwarf_cast_expanding_visitor::visit_cast_op (cast_op* e)
 	  if (module.find('/') == string::npos)
 	    {
 	      // kernel or kernel module target
-	      dw = db.get_kern_dw(s);
+	      dw = db.get_kern_dw(s, module);
 	    }
 	  else
 	    {
@@ -3226,7 +2968,7 @@ dwarf_derived_probe_group::emit_module_init (systemtap_session& s)
   s.op->newline() << "if (rc) {"; // PR6749: tolerate a failed register_*probe.
   s.op->newline(1) << "sdp->registered_p = 0;";
   s.op->newline() << "if (!sdp->optional_p)";
-  s.op->newline(1) << "_stp_warn (\"probe %s registration error (rc %d)\", probe_point, rc);";
+  s.op->newline(1) << "_stp_warn (\"probe %s (address 0x%lx) registration error (rc %d)\", probe_point, relocated_addr, rc);";
   s.op->newline(-1) << "rc = 0;"; // continue with other probes
   // XXX: shall we increment numskipped?
   s.op->newline(-1) << "}";
@@ -3325,15 +3067,17 @@ dwarf_derived_probe_group::emit_module_exit (systemtap_session& s)
 struct sdt_var_expanding_visitor: public var_expanding_visitor
 {
   sdt_var_expanding_visitor(string & process_name, string & probe_name,
-			    int arg_count, bool have_reg_args):
+			    int arg_count, bool have_reg_args, bool utrace_probe):
     process_name (process_name), probe_name (probe_name),
-    have_reg_args (have_reg_args), arg_count (arg_count)
+    have_reg_args (have_reg_args), utrace_probe (utrace_probe),
+    arg_count (arg_count)
   {
     assert(!have_reg_args || (arg_count >= 0 && arg_count <= 10));
   }
   string & process_name;
   string & probe_name;
   bool have_reg_args;
+  bool utrace_probe;
   int arg_count;
 
   void visit_target_symbol (target_symbol* e);
@@ -3344,6 +3088,9 @@ sdt_var_expanding_visitor::visit_target_symbol (target_symbol *e)
 {
   if (e->base_name == "$$name")
     {
+      if (e->addressof)
+        throw semantic_error("cannot take address of sdt variable", e->tok);
+
       literal_string *myname = new literal_string (probe_name);
       myname->tok = e->tok;
       provide(myname);
@@ -3365,10 +3112,10 @@ sdt_var_expanding_visitor::visit_target_symbol (target_symbol *e)
   // First two args are hidden: 1. pointer to probe name 2. task id
   if (arg_count < 2)
     {
-      fc->function = "ulong_arg";
+      fc->function = utrace_probe ? "_utrace_syscall_arg" : "ulong_arg";
       fc->type = pe_long;
       fc->tok = e->tok;
-      literal_number* num = new literal_number(argno + 2);
+      literal_number* num = new literal_number(argno + (utrace_probe ? 1 : 2));
       num->tok = e->tok;
       fc->args.push_back(num);
     }
@@ -3379,9 +3126,9 @@ sdt_var_expanding_visitor::visit_target_symbol (target_symbol *e)
       binary_expression *be = new binary_expression;
       be->tok = e->tok;
       functioncall *get_arg1 = new functioncall;
-      get_arg1->function = "pointer_arg";
+      get_arg1->function = utrace_probe ? "_utrace_syscall_arg" : "pointer_arg";
       get_arg1->tok = e->tok;
-      literal_number* num = new literal_number(3);
+      literal_number* num = new literal_number((utrace_probe ? 2 : 3));
       num->tok = e->tok;
       get_arg1->args.push_back(num);
 
@@ -3397,6 +3144,9 @@ sdt_var_expanding_visitor::visit_target_symbol (target_symbol *e)
 
   if (e->components.empty())
     {
+      if (e->addressof)
+        throw semantic_error("cannot take address of sdt variable", e->tok);
+
       provide(fc);
       return;
     }
@@ -3410,6 +3160,384 @@ sdt_var_expanding_visitor::visit_target_symbol (target_symbol *e)
 
   provide(cast);
 }
+
+
+struct sdt_query : public base_query
+{
+  sdt_query(probe * base_probe, probe_point * base_loc,
+            dwflpp & dw, literal_map_t const & params,
+            vector<derived_probe *> & results);
+
+  void handle_query_module();
+
+private:
+  enum probe_types
+    {
+      uprobe_type = 0x31425250, // "PRB1"
+      kprobe_type = 0x32425250, // "PRB2"
+      utrace_type = 0x33425250, // "PRB3"
+    } probe_type;
+
+  probe * base_probe;
+  probe_point * base_loc;
+  vector<derived_probe *> & results;
+  string mark_name;
+
+  set<string> probes_handled;
+
+  Elf_Data *pdata;
+  size_t probe_scn_offset;
+  size_t probe_scn_addr;
+  uint64_t probe_arg;
+  string probe_name;
+
+  bool init_probe_scn();
+  bool get_next_probe();
+
+  void convert_probe(probe *base);
+  void convert_location(probe *base, probe_point *location);
+};
+
+
+sdt_query::sdt_query(probe * base_probe, probe_point * base_loc,
+                     dwflpp & dw, literal_map_t const & params,
+                     vector<derived_probe *> & results):
+  base_query(dw, params), base_probe(base_probe),
+  base_loc(base_loc), results(results)
+{
+  assert(get_string_param(params, TOK_MARK, mark_name));
+}
+
+
+void
+sdt_query::handle_query_module()
+{
+  if (!init_probe_scn())
+    return;
+
+  if (sess.verbose > 3)
+    clog << "TOK_MARK: " << mark_name << endl;
+
+  while (get_next_probe())
+    {
+      if (!probes_handled.insert(probe_name).second)
+        continue;
+
+      probe *new_base = new probe(*base_probe);
+      probe_point *new_location = new probe_point(*base_loc);
+      convert_location(new_base, new_location);
+      new_base->body = deep_copy_visitor::deep_copy(base_probe->body);
+
+      bool have_reg_args = false;
+      if (probe_type == kprobe_type || probe_type == utrace_type)
+        {
+          convert_probe(new_base);
+          have_reg_args = true;
+        }
+
+      // Expand the local variables in the probe body
+      sdt_var_expanding_visitor svv (module_val, probe_name,
+                                     probe_arg, have_reg_args,
+                                     probe_type == utrace_type);
+      new_base->body = svv.require (new_base->body);
+
+      unsigned i = results.size();
+
+      if (probe_type == kprobe_type || probe_type == utrace_type)
+        derive_probes(sess, new_base, results);
+      else
+        {
+          literal_map_t params;
+          for (unsigned i = 0; i < new_location->components.size(); ++i)
+            {
+              probe_point::component *c = new_location->components[i];
+              params[c->functor] = c->arg;
+            }
+
+          dwarf_query q(base_probe, base_loc, dw, params, results);
+          q.has_mark = true; // enables mid-statement probing
+          dw.iterate_over_modules(&query_module, &q);
+        }
+
+      if (sess.listing_mode)
+        {
+          // restore the locations to print a nicer probe name
+          probe_point loc(*base_loc);
+          loc.components[1] =
+            new probe_point::component(TOK_MARK, new literal_string (probe_name));
+          for (; i < results.size(); ++i)
+            for (unsigned j = 0; j < results[i]->locations.size(); ++j)
+              *results[i]->locations[j] = loc;
+        }
+    }
+}
+
+
+bool
+sdt_query::init_probe_scn()
+{
+  Elf* elf;
+  GElf_Shdr shdr_mem;
+  GElf_Shdr *shdr = NULL;
+  Dwarf_Addr bias;
+  size_t shstrndx;
+
+  // Explicitly look in the main elf file first.
+  elf = dwfl_module_getelf (dw.module, &bias);
+  Elf_Scn *probe_scn = NULL;
+
+  dwfl_assert ("getshdrstrndx", elf_getshdrstrndx (elf, &shstrndx));
+
+  bool have_probes = false;
+
+  // Is there a .probes section?
+  while ((probe_scn = elf_nextscn (elf, probe_scn)))
+    {
+      shdr = gelf_getshdr (probe_scn, &shdr_mem);
+      assert (shdr != NULL);
+
+      if (strcmp (elf_strptr (elf, shstrndx, shdr->sh_name), ".probes") == 0)
+	{
+	  have_probes = true;
+	  break;
+	}
+    }
+
+  // Older versions put .probes section in the debuginfo dwarf file,
+  // so check if it actually exists, if not take a look in the debuginfo file
+  if (! have_probes || (have_probes && shdr->sh_type == SHT_NOBITS))
+    {
+      elf = dwarf_getelf (dwfl_module_getdwarf (dw.module, &bias));
+      if (! elf)
+	return false;
+      dwfl_assert ("getshdrstrndx", elf_getshdrstrndx (elf, &shstrndx));
+      probe_scn = NULL;
+      while ((probe_scn = elf_nextscn (elf, probe_scn)))
+	{
+	  shdr = gelf_getshdr (probe_scn, &shdr_mem);
+	  if (strcmp (elf_strptr (elf, shstrndx, shdr->sh_name),
+		      ".probes") == 0)
+	    have_probes = true;
+	    break;
+	}
+    }
+
+  if (!have_probes)
+    return false;
+
+  pdata = elf_getdata_rawchunk (elf, shdr->sh_offset, shdr->sh_size, ELF_T_BYTE);
+  probe_scn_offset = 0;
+  probe_scn_addr = shdr->sh_addr;
+  assert (pdata != NULL);
+  if (sess.verbose > 4)
+    clog << "got .probes elf scn_addr@0x" << probe_scn_addr << dec
+	 << ", size: " << pdata->d_size << endl;
+  return true;
+}
+
+bool
+sdt_query::get_next_probe()
+{
+  // Extract probe info from the .probes section
+
+  while (probe_scn_offset < pdata->d_size)
+    {
+      struct probe_entry
+      {
+	__uint64_t name;
+	__uint64_t arg;
+      }  *pbe;
+      __uint32_t *type = (__uint32_t*) ((char*)pdata->d_buf + probe_scn_offset);
+      probe_type = (enum probe_types)*type;
+      if (probe_type != uprobe_type && probe_type != kprobe_type
+	  && probe_type != utrace_type)
+	{
+	  // Unless this is a mangled .probes section, this happens
+	  // because the name of the probe comes first, followed by
+	  // the sentinel.
+	  if (sess.verbose > 5)
+	    clog << "got unknown probe_type: 0x" << hex << probe_type
+		 << dec << endl;
+	  probe_scn_offset += sizeof(__uint32_t);
+	  continue;
+	}
+      probe_scn_offset += sizeof(__uint32_t);
+      probe_scn_offset += probe_scn_offset % sizeof(__uint64_t);
+      pbe = (struct probe_entry*) ((char*)pdata->d_buf + probe_scn_offset);
+      probe_name = (char*)((char*)pdata->d_buf + pbe->name - (char*)probe_scn_addr);
+      probe_arg = pbe->arg;
+      if (sess.verbose > 4)
+	clog << "saw .probes " << probe_name
+	     << "@0x" << hex << probe_arg << dec << endl;
+
+      probe_scn_offset += sizeof (struct probe_entry);
+      if ((mark_name == probe_name)
+	  || (dw.name_has_wildcard (mark_name)
+	      && dw.function_name_matches_pattern (probe_name, mark_name)))
+	{
+	  if (sess.verbose > 3)
+	    clog << "found probe_name" << probe_name << " at 0x"
+		 << hex << probe_arg << dec << endl;
+	  return true;
+	}
+      else
+	continue;
+    }
+  return false;
+}
+
+
+void
+sdt_query::convert_probe (probe *base)
+{
+  block *b = new block;
+  b->tok = base->body->tok;
+
+  // XXX: Does this also need to happen for i386 under x86_64 stap?
+#ifdef __i386__
+  if (probe_type == kprobe_type)
+    {
+      functioncall *rp = new functioncall;
+      rp->tok = b->tok;
+      rp->function = "regparm";
+      rp->tok = b->tok;
+      literal_number* littid = new literal_number(0);
+      littid->tok = b->tok;
+      rp->args.push_back(littid);
+      expr_statement* es = new expr_statement;
+      es->tok = b->tok;
+      es->value = rp;
+      b->statements.push_back(es);
+    }
+#endif
+
+  if (probe_type == utrace_type)
+    {
+      // Generate: if ($syscall != 0xbead) next;
+      if_statement *issc = new if_statement;
+      issc->thenblock = new next_statement;
+      issc->elseblock = NULL;
+      issc->tok = b->tok;
+      comparison *besc = new comparison;
+      besc->op = "!=";
+      besc->tok = b->tok;
+      functioncall* n = new functioncall;
+      n->tok = b->tok;
+      n->function = "_utrace_syscall_nr";
+      n->referent = 0;
+      besc->left = n;
+      literal_number* fake_syscall = new literal_number(0xbead);
+      fake_syscall->tok = b->tok;
+      besc->right = fake_syscall;
+      issc->condition = besc;
+      b->statements.push_back(issc);
+    }
+  else if (probe_type == kprobe_type)
+    {
+      // Generate: if (arg2 != kprobe_type) next;
+      if_statement *istid = new if_statement;
+      istid->thenblock = new next_statement;
+      istid->elseblock = NULL;
+      istid->tok = b->tok;
+      comparison *betid = new comparison;
+      betid->op = "!=";
+      betid->tok = b->tok;
+
+      functioncall *arg2 = new functioncall;
+      arg2->function = "ulong_arg";
+      arg2->tok = b->tok;
+      literal_number* num = new literal_number(2);
+      num->tok = b->tok;
+      arg2->args.push_back(num);
+
+      betid->left = arg2;
+      literal_number* littid = new literal_number(kprobe_type);
+      littid->tok = b->tok;
+      betid->right = littid;
+      istid->condition = betid;
+      b->statements.push_back(istid);
+    }
+
+  // Generate: if (arg1 != mark("label")) next;
+  functioncall *fc = new functioncall;
+  fc->function = (probe_type == utrace_type) ? "_utrace_syscall_arg" : "ulong_arg";
+  fc->tok = b->tok;
+  literal_number* num = new literal_number((probe_type == utrace_type) ? 0 : 1);
+  num->tok = b->tok;
+  fc->args.push_back(num);
+
+  functioncall *fcus = new functioncall;
+  fcus->function = "user_string";
+  fcus->type = pe_string;
+  fcus->tok = b->tok;
+  fcus->args.push_back(fc);
+
+  if_statement *is = new if_statement;
+  is->thenblock = new next_statement;
+  is->elseblock = NULL;
+  is->tok = b->tok;
+  comparison *be = new comparison;
+  be->op = "!=";
+  be->tok = b->tok;
+  be->left = fcus;
+  be->right = new literal_string(probe_name);
+  is->condition = be;
+  b->statements.push_back(is);
+
+  // Now replace the body
+  b->statements.push_back(base->body);
+  base->body = b;
+}
+
+
+void
+sdt_query::convert_location (probe *base, probe_point *location)
+{
+  switch (probe_type)
+    {
+    case uprobe_type:
+      if (sess.verbose > 3)
+        clog << "probe_type == uprobe_type, use statement addr: 0x"
+             << hex << probe_arg << dec << endl;
+      // process("executable").statement(probe_arg)
+      location->components[1]->functor = TOK_STATEMENT;
+      location->components[1]->arg = new literal_number(probe_arg);
+      break;
+
+    case kprobe_type:
+      if (sess.verbose > 3)
+        clog << "probe_type == kprobe_type" << endl;
+      // kernel.function("*getegid*")
+      location->components[0]->functor = TOK_KERNEL;
+      location->components[0]->arg = NULL;
+      location->components[1]->functor = TOK_FUNCTION;
+      location->components[1]->arg = new literal_string("*getegid*");
+      break;
+
+    case utrace_type:
+      if (sess.verbose > 3)
+        clog << "probe_type == utrace_type" << endl;
+      // process("executable").syscall
+      location->components[1]->functor = "syscall";
+      location->components[1]->arg = NULL;
+      break;
+
+    default:
+      if (sess.verbose > 3)
+        clog << "probe_type == use_uprobe_no_dwarf, use label name: "
+          << "_stapprobe1_" << mark_name << endl;
+      // process("executable").function("*").label("_stapprobe1_MARK_NAME")
+      location->components[1]->functor = TOK_FUNCTION;
+      location->components[1]->arg = new literal_string("*");
+      location->components.push_back(new probe_point::component(TOK_LABEL));
+      location->components[2]->arg = new literal_string("_stapprobe1_" + mark_name);
+      break;
+    }
+
+  base->locations.clear();
+  base->locations.push_back(location);
+}
+
 
 void
 dwarf_builder::build(systemtap_session & sess,
@@ -3425,11 +3553,13 @@ dwarf_builder::build(systemtap_session & sess,
   dwflpp* dw = 0;
 
   string module_name;
-  if (has_null_param (parameters, TOK_KERNEL)
-      || get_param (parameters, TOK_MODULE, module_name))
+  if (has_null_param (parameters, TOK_KERNEL))
     {
-      // kernel or kernel module target
-      dw = get_kern_dw(sess);
+      dw = get_kern_dw(sess, "kernel");
+    }
+  else if (get_param (parameters, TOK_MODULE, module_name))
+    {
+      dw = get_kern_dw(sess, module_name);
     }
   else if (get_param (parameters, TOK_PROCESS, module_name))
     {
@@ -3446,124 +3576,22 @@ dwarf_builder::build(systemtap_session & sess,
   string mark_name;
   if (get_param(parameters, TOK_MARK, mark_name))
     {
-      probe_table probe_table(mark_name, sess, dw);
-      if (! probe_table.get_next_probe())
-	return;
-      
-      if (sess.verbose > 3)
-	clog << "TOK_MARK: " << probe_table.mark_name << endl;
-
-      if (probe_table.probe_type == probe_table.uprobe_type)
-	{
-	  do
-	    {
-	      probe *new_base = new probe;
-	      *new_base = *base;
-	      
-	      new_base->body = deep_copy_visitor::deep_copy(base->body);
-	      probe_point *new_location = new probe_point;
-	      *new_location = *location;
-	      new_base->locations.clear();
-	      
-	      const token* sv_tok = new_location->components[1]->arg->tok;
-	      new_location->components[1]->functor = TOK_STATEMENT;
-	      new_location->components[1]->arg = new literal_number((long)probe_table.probe_arg);
-	      new_location->components[1]->arg->tok = sv_tok;
-	      ((literal_map_t&)parameters)[TOK_STATEMENT] = new_location->components[1]->arg;
-	      new_base->locations.push_back(new_location);
-
-	      if (sess.verbose > 3)
-		clog << "probe_type == use_uprobe, use statement addr: 0x"
-		     << hex << probe_table.probe_arg << dec << endl;
-	    
-	      // Now expand the local variables in the probe body
-	      sdt_var_expanding_visitor svv (module_name, probe_table.probe_name,
-					     probe_table.probe_arg, false);
-	      new_base->body = svv.require (new_base->body);
-
-	      dwarf_query q(sess, new_base, new_location, *dw, parameters, finished_results);
-	      q.has_mark = true;
-	      dw->iterate_over_modules(&query_module, &q);
-	      if (sess.listing_mode)
-		{
-		  finished_results.back()->locations[0]->components[1]->functor = TOK_MARK;
-		  finished_results.back()->locations[0]->components[1]->arg = new literal_string (probe_table.probe_name.c_str());
-		}
-	    }
-	  while (probe_table.get_next_probe());
-	  return;
-	}
-
-      else if (probe_table.probe_type == probe_table.kprobe_type
-	       || probe_table.probe_type == probe_table.utrace_type)
-	{
-	  do
-	    {
-	      set<string>::iterator pb;
-	      pb = probes_handled.find(probe_table.probe_name);
-	      if (pb == probes_handled.end())
-		probes_handled.insert (probe_table.probe_name);
-	      else
-		return;
-
-	      probe *new_base = new probe;
-	      *new_base = *base;
-	      
-	      new_base->body = deep_copy_visitor::deep_copy(base->body);
-	      probe_point *new_location = new probe_point;
-	      *new_location = *location;
-	      new_base->locations.clear();
-	      
-	      probe_table.convert_probe(new_base);
-
-	      // Expand the local variables in the probe body
-	      sdt_var_expanding_visitor svv (module_name, probe_table.probe_name,
-					     probe_table.probe_arg, true);
-	      new_base->body = svv.require (new_base->body);
-	      probe_table.convert_location(new_base, new_location);
-	      derive_probes(sess, new_base, finished_results);
-	      if (sess.listing_mode)
-		{
-		  finished_results.back()->locations[0]->components[0]->functor = TOK_FUNCTION;
-		  finished_results.back()->locations[0]->components[0]->arg = new literal_string (module_name);
-		  finished_results.back()->locations[0]->components[1]->functor = TOK_MARK;
-		  finished_results.back()->locations[0]->components[1]->arg = new literal_string (probe_table.probe_name.c_str());
-		}
-	    }
-	  while (probe_table.get_next_probe());
-	  return;
-	}
-
-      else
-	{
-	  location->components[1]->functor = TOK_FUNCTION;
-	  location->components[1]->arg = new literal_string("*");
-	  ((literal_map_t&)parameters)[TOK_FUNCTION] = location->components[1]->arg;
-	  location->components.push_back(new probe_point::component(TOK_LABEL));
-	  location->components[2]->arg = new literal_string("_stapprobe1_" + probe_table.mark_name);
-	  ((literal_map_t&)parameters).erase(TOK_MARK);
-	  ((literal_map_t&)parameters).insert(pair<string,literal*>(TOK_LABEL, location->components[2]->arg));
-
-	  if (sess.verbose > 3)
-	    clog << "probe_type == use_uprobe_no_dwarf, use label name: "
-		 << "_stapprobe1_" << probe_table.mark_name << endl;
-	}
-
-      dw->module = 0;
+      sdt_query sdtq(base, location, *dw, parameters, finished_results);
+      dw->iterate_over_modules(&query_module, &sdtq);
+      return;
     }
-  
-  dwarf_query q(sess, base, location, *dw, parameters, finished_results);
 
+  dwarf_query q(base, location, *dw, parameters, finished_results);
 
   // XXX: kernel.statement.absolute is a special case that requires no
   // dwfl processing.  This code should be in a separate builder.
-
   if (q.has_kernel && q.has_absolute)
     {
       // assert guru mode for absolute probes
       if (! q.base_probe->privileged)
         {
-          throw semantic_error ("absolute statement probe in unprivileged script", q.base_probe->tok);
+          throw semantic_error ("absolute statement probe in unprivileged script",
+                                q.base_probe->tok);
         }
 
       // For kernel.statement(NUM).absolute probe points, we bypass
@@ -3583,8 +3611,8 @@ dwarf_builder::build(systemtap_session & sess,
 
 symbol_table::~symbol_table()
 {
-  for (iterator_t i = list_by_addr.begin(); i != list_by_addr.end(); ++i)
-    delete *i;
+  for (iterator_t i = map_by_addr.begin(); i != map_by_addr.end(); ++i)
+    delete i->second;
 }
 
 void
@@ -3603,7 +3631,7 @@ symbol_table::add_symbol(const char *name, bool weak, Dwarf_Addr addr,
   map_by_name[fi->name] = fi;
   // TODO: Use a multimap in case there are multiple static
   // functions with the same name?
-  list_by_addr.push_back(fi);
+  map_by_addr.insert(make_pair(addr, fi));
 }
 
 enum info_status
@@ -3644,13 +3672,12 @@ symbol_table::read_symbols(FILE *f, const string& path)
         add_symbol(name, (type == 'W'), (Dwarf_Addr) addr, &high_addr);
     }
 
-  if (list_by_addr.size() < 1)
+  if (map_by_addr.size() < 1)
     {
       cerr << "Symbol table error: "
            << path << " contains no function symbols." << endl;
       return info_absent;
     }
-  sort();
   return info_present;
 }
 
@@ -3762,53 +3789,17 @@ symbol_table::get_from_elf()
         add_symbol(name, (GELF_ST_BIND(sym.st_info) == STB_WEAK),
                                               sym.st_value, &high_addr);
     }
-  sort();
   return info_present;
-}
-
-void
-symbol_table::mark_dwarf_redundancies(dwflpp *dw)
-{
-  // dwflpp.cu_function_cache maps each module_name:cu_name to a
-  // vector of Dwarf_Dies, one per function.
-  string module_prefix = string(mod_info->name) + ":";
-
-  for (mod_cu_function_cache_t::iterator cu = dw->cu_function_cache.begin();
-       cu != dw->cu_function_cache.end(); cu++)
-    {
-      string key = cu->first;
-      if (key.find(module_prefix) == 0)
-        {
-          // Found a compilation unit in the module of interest.
-          // Mark all its functions in the symbol table.
-          cu_function_cache_t* v = cu->second;
-          assert(v);
-          for (cu_function_cache_t::iterator fc = v->begin(); fc != v->end(); fc++)
-            {
-              Dwarf_Die func = fc->second;
-              string func_name = fc->first; // == dwarf_diename(&func);
-              // map_by_name[func_name]->die = func;
-              map<string, func_info*>::iterator i = map_by_name.find(func_name);
-              // Func names can show up in the dwarf but not the symtab (!).
-              if (i != map_by_name.end())
-                {
-                  func_info *fi = i->second;
-                  fi->die = func;
-                }
-            }
-        }
-    }
 }
 
 func_info *
 symbol_table::get_func_containing_address(Dwarf_Addr addr)
 {
-  iterator_t iter = upper_bound(list_by_addr.begin(), list_by_addr.end(), addr,
-                              func_info::Compare());
-  if (iter == list_by_addr.begin())
+  iterator_t iter = map_by_addr.upper_bound(addr);
+  if (iter == map_by_addr.begin())
     return NULL;
   else
-    return *(iter - 1);
+    return (--iter)->second;
 }
 
 func_info *
@@ -3843,36 +3834,30 @@ symbol_table::purge_syscall_stubs()
   Dwarf_Addr stub_addr = lookup_symbol_address("sys_ni_syscall");
   if (stub_addr == 0)
     return;
-  range_t purge_range = equal_range(list_by_addr.begin(), list_by_addr.end(),
-                                    stub_addr, func_info::Compare());
+  range_t purge_range = map_by_addr.equal_range(stub_addr);
   for (iterator_t iter = purge_range.first;
        iter != purge_range.second;
-       ++iter)
+       )
     {
-      func_info *fi = *iter;
+      func_info *fi = iter->second;
       if (fi->weak && fi->name != "sys_ni_syscall")
         {
           map_by_name.erase(fi->name);
+          map_by_addr.erase(iter++);
           delete fi;
-          *iter = 0;
         }
+      else
+        iter++;
     }
-  // Range might have null pointer entries that should be erased.
-  list_by_addr.erase(remove(purge_range.first, purge_range.second,
-                            (func_info*)0),
-                     purge_range.second);
-}
-
-void
-symbol_table::sort()
-{
-  stable_sort(list_by_addr.begin(), list_by_addr.end(), func_info::Compare());
 }
 
 void
 module_info::get_symtab(dwarf_query *q)
 {
   systemtap_session &sess = q->sess;
+
+  if (symtab_status != info_unknown)
+    return;
 
   sym_table = new symbol_table(this);
   if (!elf_path.empty())
@@ -3916,16 +3901,51 @@ module_info::get_symtab(dwarf_query *q)
       return;
     }
 
-  // If we have dwarf for the same module, mark the redundant symtab
-  // entries.
-  //
-  // In dwarf_query::handle_query_module(), the call to query_module_dwarf()
-  // precedes the call to query_module_symtab().  So we should never read
-  // a module's symbol table without first having tried to get its dwarf.
-  sym_table->mark_dwarf_redundancies(&q->dw);
-
   if (name == TOK_KERNEL)
     sym_table->purge_syscall_stubs();
+}
+
+// update_symtab reconciles data between the elf symbol table and the dwarf
+// function enumeration.  It updates the symbol table entries with the dwarf
+// die that describes the function, which also signals to query_module_symtab
+// that a statement probe isn't needed.  In return, it also adds aliases to the
+// function table for names that share the same addr/die.
+void
+module_info::update_symtab(cu_function_cache_t *funcs)
+{
+  if (!sym_table)
+    return;
+
+  cu_function_cache_t new_funcs;
+
+  for (cu_function_cache_t::iterator func = funcs->begin();
+       func != funcs->end(); func++)
+    {
+      // optimization: inlines will never be in the symbol table
+      if (dwarf_func_inline(&func->second) != 0)
+        continue;
+
+      func_info *fi = sym_table->lookup_symbol(func->first);
+      if (!fi)
+        continue;
+
+      // iterate over all functions at the same address
+      symbol_table::range_t er = sym_table->map_by_addr.equal_range(fi->addr);
+      for (symbol_table::iterator_t it = er.first; it != er.second; ++it)
+        {
+          // update this function with the dwarf die
+          it->second->die = func->second;
+
+          // if this function is a new alias, then
+          // save it to merge into the function cache
+          if (it->second != fi)
+            new_funcs[it->second->name] = it->second->die;
+        }
+    }
+
+  // add all discovered aliases back into the function cache
+  // NB: this won't replace any names that dwarf may have already found
+  funcs->insert(new_funcs.begin(), new_funcs.end());
 }
 
 module_info::~module_info()
@@ -4779,7 +4799,7 @@ kprobe_derived_probe_group::emit_module_init (systemtap_session& s)
   s.op->newline() << "if (rc) {"; // PR6749: tolerate a failed register_*probe.
   s.op->newline(1) << "sdp->registered_p = 0;";
   s.op->newline() << "if (!sdp->optional_p)";
-  s.op->newline(1) << "_stp_warn (\"probe %s registration error (rc %d)\", probe_point, rc);";
+  s.op->newline(1) << "_stp_warn (\"probe %s (address 0x%lx) registration error (rc %d)\", probe_point, addr, rc);";
   s.op->newline(-1) << "rc = 0;"; // continue with other probes
   // XXX: shall we increment numskipped?
   s.op->newline(-1) << "}";
@@ -5034,6 +5054,9 @@ tracepoint_var_expanding_visitor::visit_target_symbol_arg (target_symbol* e)
 
   if (e->components.empty())
     {
+      if (e->addressof)
+        throw semantic_error("cannot take address of tracepoint variable", e->tok);
+
       // Just grab the value from the probe locals
       e->probe_context_var = "__tracepoint_arg_" + arg->name;
       e->type = pe_long;
@@ -5133,6 +5156,9 @@ tracepoint_var_expanding_visitor::visit_target_symbol_arg (target_symbol* e)
 void
 tracepoint_var_expanding_visitor::visit_target_symbol_context (target_symbol* e)
 {
+  if (e->addressof)
+    throw semantic_error("cannot take address of context variable", e->tok);
+
   if (is_active_lvalue (e))
     throw semantic_error("write to tracepoint '" + e->base_name + "' not permitted", e->tok);
 
@@ -5584,6 +5610,7 @@ struct tracepoint_query : public base_query
   probe * base_probe;
   probe_point * base_loc;
   vector<derived_probe *> & results;
+  set<string> probed_names;
 
   void handle_query_module();
   int handle_query_cu(Dwarf_Die * cudie);
@@ -5620,6 +5647,12 @@ tracepoint_query::handle_query_func(Dwarf_Die * func)
 
   assert(dw.function_name.compare(0, 10, "stapprobe_") == 0);
   string tracepoint_instance = dw.function_name.substr(10);
+
+  // check for duplicates -- sometimes tracepoint headers may be indirectly
+  // included in more than one of our tracequery modules.
+  if (!probed_names.insert(tracepoint_instance).second)
+    return DWARF_CB_OK;
+
   derived_probe *dp = new tracepoint_derived_probe (dw.sess, dw, *func,
                                                     tracepoint_instance,
                                                     base_probe, base_loc);
@@ -5651,6 +5684,7 @@ struct tracepoint_builder: public derived_probe_builder
 private:
   dwflpp *dw;
   bool init_dw(systemtap_session& s);
+  string get_tracequery_module(systemtap_session& s, const string& header);
 
 public:
 
@@ -5672,50 +5706,97 @@ public:
 };
 
 
-bool
-tracepoint_builder::init_dw(systemtap_session& s)
+string
+tracepoint_builder::get_tracequery_module(systemtap_session& s,
+                                          const string& header)
 {
-  if (dw != NULL)
-    return true;
-
+  string tracequery_path;
   if (s.use_cache)
     {
       // see if the cached module exists
-      find_tracequery_hash(s);
-      if (!s.tracequery_path.empty())
+      tracequery_path = find_tracequery_hash(s, header);
+      if (!tracequery_path.empty())
         {
-          int fd = open(s.tracequery_path.c_str(), O_RDONLY);
+          int fd = open(tracequery_path.c_str(), O_RDONLY);
           if (fd != -1)
             {
               if (s.verbose > 2)
-                clog << "Pass 2: using cached " << s.tracequery_path << endl;
-
-              dw = new dwflpp(s, s.tracequery_path);
+                clog << "Pass 2: using cached " << tracequery_path << endl;
               close(fd);
-              return true;
+              return tracequery_path;
             }
         }
     }
 
   // no cached module, time to make it
+
+  size_t root_pos = header.rfind("/include/");
+  string short_header = (root_pos != string::npos) ?
+    header.substr(root_pos + 9) : header;
+
   string tracequery_ko;
-  int rc = make_tracequery(s, tracequery_ko, tracepoint_extra_headers());
+  int rc = make_tracequery(s, tracequery_ko, short_header,
+                           tracepoint_extra_headers());
   if (rc != 0)
-    return false;
+    return "";
 
   if (s.use_cache)
     {
       // try to save tracequery in the cache
       if (s.verbose > 2)
         clog << "Copying " << tracequery_ko
-             << " to " << s.tracequery_path << endl;
+             << " to " << tracequery_path << endl;
       if (copy_file(tracequery_ko.c_str(),
-                    s.tracequery_path.c_str()) != 0)
+                    tracequery_path.c_str()) != 0)
         cerr << "Copy failed (\"" << tracequery_ko << "\" to \""
-             << s.tracequery_path << "\"): " << strerror(errno) << endl;
+             << tracequery_path << "\"): " << strerror(errno) << endl;
+    }
+  return tracequery_ko;
+}
+
+
+bool
+tracepoint_builder::init_dw(systemtap_session& s)
+{
+  if (dw != NULL)
+    return true;
+
+  vector<string> tracequery_modules;
+
+  glob_t trace_glob;
+  string globs[] = {
+      "/include/trace/*.h",
+      "/include/trace/events/*.h",
+      "/source/include/trace/*.h",
+      "/source/include/trace/events/*.h",
+  };
+  for (unsigned z = 0; z < sizeof(globs) / sizeof(globs[0]); z++)
+    {
+      string glob_str(s.kernel_build_tree + globs[z]);
+      glob(glob_str.c_str(), 0, NULL, &trace_glob);
+      for (unsigned i = 0; i < trace_glob.gl_pathc; ++i)
+        {
+          string header(trace_glob.gl_pathv[i]);
+
+          // filter out a few known "internal-only" headers
+          if (header.find("/ftrace.h") != string::npos)
+            continue;
+          if (header.find("/trace_events.h") != string::npos)
+            continue;
+          if (header.find("_event_types.h") != string::npos)
+            continue;
+
+          string tracequery_path = get_tracequery_module(s, header);
+          if (!tracequery_path.empty())
+            tracequery_modules.push_back(tracequery_path);
+        }
+      globfree(&trace_glob);
     }
 
-  dw = new dwflpp(s, tracequery_ko);
+  // TODO: consider other sources of tracepoint headers too, like from
+  // a command-line parameter or some environment or .systemtaprc
+
+  dw = new dwflpp(s, tracequery_modules);
   return true;
 }
 

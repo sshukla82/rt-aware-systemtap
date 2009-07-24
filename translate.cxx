@@ -4907,6 +4907,27 @@ dump_unwindsyms (Dwfl_Module *m,
 // them with the runtime.
 void emit_symbol_data_done (unwindsym_dump_context*, systemtap_session&);
 
+
+static set<string> offline_search_modules;
+static int dwfl_report_offline_predicate2 (const char* modname, const char* filename)
+{
+  if (pending_interrupts)
+    return -1;
+
+  if (offline_search_modules.empty())
+    return -1;
+
+  /* Reject mismatching module names */
+  if (offline_search_modules.find(modname) == offline_search_modules.end())
+    return 0;
+  else
+    {
+      offline_search_modules.erase(modname);
+      return 1;
+    }
+}
+
+
 void
 emit_symbol_data (systemtap_session& s)
 {
@@ -4959,22 +4980,38 @@ emit_symbol_data (systemtap_session& s)
   else
     elfutils_kernel_path = s.kernel_build_tree;
 
+
+  // Set up our offline search for kernel modules.  As in dwflpp.cxx,
+  // we don't want the offline search iteration to do a complete search
+  // of the kernel build tree, since that's wasteful.
+  offline_search_modules.erase (offline_search_modules.begin(),
+                                offline_search_modules.end());
+  for (set<string>::iterator it = s.unwindsym_modules.begin();
+       it != s.unwindsym_modules.end();
+       it++)
+    {
+      string foo = *it;
+      if (foo[0] != '/') /* Omit user-space, since we're only using this for
+                            kernel space offline searches. */
+        offline_search_modules.insert (foo);
+    }
+
   int rc = dwfl_linux_kernel_report_offline (dwfl,
                                              elfutils_kernel_path.c_str(),
-					     &dwfl_report_offline_predicate);
+					     & dwfl_report_offline_predicate2);
+
+  (void) rc; // As in dwflpp.cxx, we ignore rc here.
+
   dwfl_report_end (dwfl, NULL, NULL);
-  if (rc == 0) // tolerate missing data; will warn user about it anyway
+  ptrdiff_t off = 0;
+  do
     {
-      ptrdiff_t off = 0;
-      do
-        {
-          if (pending_interrupts) return;
-          if (ctx.undone_unwindsym_modules.empty()) break;
-          off = dwfl_getmodules (dwfl, &dump_unwindsyms, (void *) &ctx, 0);
-        }
-      while (off > 0);
-      dwfl_assert("dwfl_getmodules", off == 0);
+      if (pending_interrupts) return;
+      if (ctx.undone_unwindsym_modules.empty()) break;
+      off = dwfl_getmodules (dwfl, &dump_unwindsyms, (void *) &ctx, 0);
     }
+  while (off > 0);
+  dwfl_assert("dwfl_getmodules", off == 0);
   dwfl_end(dwfl);
 
 
@@ -5034,8 +5071,13 @@ emit_symbol_data_done (unwindsym_dump_context *ctx, systemtap_session& s)
   ctx->output << "};\n";
   ctx->output << "static unsigned _stp_num_modules = " << ctx->stp_module_index << ";\n";
 
-  ctx->output << "static unsigned long _stp_kretprobe_trampoline = 0x"
-	      << hex << ctx->stp_kretprobe_trampoline_addr << dec << ";\n";
+  ctx->output << "static unsigned long _stp_kretprobe_trampoline = ";
+  // Special case for -1, which is invalid in hex if host width > target width.
+  if (ctx->stp_kretprobe_trampoline_addr == (unsigned long) -1)
+    ctx->output << "-1;\n";
+  else
+    ctx->output << "0x" << hex << ctx->stp_kretprobe_trampoline_addr << dec
+		<< ";\n";
 
   // Some nonexistent modules may have been identified with "-d".  Note them.
   for (set<string>::iterator it = ctx->undone_unwindsym_modules.begin();

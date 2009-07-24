@@ -27,7 +27,6 @@ extern "C" {
 #include <unistd.h>
 #include <string.h>
 #include <errno.h>
-#include <glob.h>
 }
 
 
@@ -158,7 +157,6 @@ compile_pass (systemtap_session& s)
   output_autoconf(s, o, "autoconf-vm-area.c", "STAPCONF_VM_AREA", NULL);
   output_autoconf(s, o, "autoconf-procfs-owner.c", "STAPCONF_PROCFS_OWNER", NULL);
   output_autoconf(s, o, "autoconf-alloc-percpu-align.c", "STAPCONF_ALLOC_PERCPU_ALIGN", NULL);
-  output_autoconf(s, o, "autoconf-find-task-pid.c", "STAPCONF_FIND_TASK_PID", NULL);
   output_autoconf(s, o, "autoconf-x86-gs.c", "STAPCONF_X86_GS", NULL);
 
 #if 0
@@ -171,6 +169,7 @@ compile_pass (systemtap_session& s)
                   "STAPCONF_KERNEL_STACKTRACE", NULL);
   output_autoconf(s, o, "autoconf-asm-syscall.c",
 		  "STAPCONF_ASM_SYSCALL_H", NULL);
+  output_autoconf(s, o, "autoconf-ring_buffer-flags.c", "STAPCONF_RING_BUFFER_FLAGS", NULL);
 
   o << module_cflags << " += -include $(STAPCONF_HEADER)" << endl;
 
@@ -186,7 +185,16 @@ compile_pass (systemtap_session& s)
   // if (s.keep_tmpdir)
   // o << "CFLAGS += -fverbose-asm -save-temps" << endl;
 
+  // Kernels can be compiled with CONFIG_CC_OPTIMIZE_FOR_SIZE to select
+  // -Os, otherwise -O2 is the default.
   o << "EXTRA_CFLAGS += -freorder-blocks" << endl; // improve on -Os
+
+  // We used to allow the user to override default optimization when so
+  // requested by adding a -O[0123s] so they could determine the
+  // time/space/speed tradeoffs themselves, but we cannot guantantee that
+  // the (un)optimized code actually compiles and/or generates functional
+  // code, so we had to remove it.
+  // o << "EXTRA_CFLAGS += " << s.gcc_flags << endl; // Add -O[0123s]
 
   // o << "CFLAGS += -fno-unit-at-a-time" << endl;
 
@@ -373,10 +381,15 @@ run_pass (systemtap_session& s)
 
 // Build a tiny kernel module to query tracepoints
 int
-make_tracequery(systemtap_session& s, string& name, const vector<string>& extra_headers)
+make_tracequery(systemtap_session& s, string& name,
+                const std::string& header,
+                const vector<string>& extra_headers)
 {
+  static unsigned tick = 0;
+  string basename("tracequery_kmod_" + lex_cast<string>(++tick));
+
   // create a subdirectory for the module
-  string dir(s.tmpdir + "/tracequery");
+  string dir(s.tmpdir + "/" + basename);
   if (create_dir(dir.c_str()) != 0)
     {
       if (! s.suppress_warnings)
@@ -384,18 +397,18 @@ make_tracequery(systemtap_session& s, string& name, const vector<string>& extra_
       return 1;
     }
 
-  name = dir + "/tracequery.ko";
+  name = dir + "/" + basename + ".ko";
 
   // create a simple Makefile
   string makefile(dir + "/Makefile");
   ofstream omf(makefile.c_str());
   // force debuginfo generation, and relax implicit functions
   omf << "EXTRA_CFLAGS := -g -Wno-implicit-function-declaration" << endl;
-  omf << "obj-m := tracequery.o" << endl;
+  omf << "obj-m := " + basename + ".o" << endl;
   omf.close();
 
   // create our source file
-  string source(dir + "/tracequery.c");
+  string source(dir + "/" + basename + ".c");
   ofstream osrc(source.c_str());
   osrc << "#ifdef CONFIG_TRACEPOINTS" << endl;
   osrc << "#include <linux/tracepoint.h>" << endl;
@@ -415,37 +428,8 @@ make_tracequery(systemtap_session& s, string& name, const vector<string>& extra_
   for (unsigned z=0; z<extra_headers.size(); z++)
     osrc << "#include <" << extra_headers[z] << ">\n";
 
-  // dynamically pull in all tracepoint headers from include/trace/
-  glob_t trace_glob;
-  string globs[] = {
-      "/include/trace/*.h",
-      "/include/trace/events/*.h",
-      "/source/include/trace/*.h",
-      "/source/include/trace/events/*.h",
-  };
-  for (unsigned z = 0; z < sizeof(globs) / sizeof(globs[0]); z++)
-    {
-      string glob_str(s.kernel_build_tree + globs[z]);
-      glob(glob_str.c_str(), 0, NULL, &trace_glob);
-      for (unsigned i = 0; i < trace_glob.gl_pathc; ++i)
-        {
-          string header(trace_glob.gl_pathv[i]);
-          size_t root_pos = header.rfind("/include/");
-          assert(root_pos != string::npos);
-          header.erase(0, root_pos + 9);
-
-          // filter out a few known "internal-only" headers
-          if (header.find("/ftrace.h") != string::npos)
-            continue;
-          if (header.find("/trace_events.h") != string::npos)
-            continue;
-          if (header.find("_event_types.h") != string::npos)
-            continue;
-
-          osrc << "#include <" << header << ">" << endl;
-        }
-      globfree(&trace_glob);
-    }
+  // add the requested tracepoint header
+  osrc << "#include <" << header << ">" << endl;
 
   // finish up the module source
   osrc << "#endif /* CONFIG_TRACEPOINTS */" << endl;

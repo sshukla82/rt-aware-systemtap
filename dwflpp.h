@@ -87,6 +87,7 @@ module_info
   info_status symtab_status;    // symbol table cached?
 
   void get_symtab(dwarf_query *q);
+  void update_symtab(cu_function_cache_t *funcs);
 
   module_info(const char *name) :
     mod(NULL),
@@ -128,28 +129,6 @@ struct func_info
   Dwarf_Addr entrypc;
   Dwarf_Addr prologue_end;
   bool weak;
-
-  // Comparison functor for list of functions sorted by address. The
-  // two versions that take a Dwarf_Addr let us use the STL algorithms
-  // upper_bound, equal_range et al., but we don't know whether the
-  // searched-for value will be passed as the first or the second
-  // argument.
-  struct Compare
-  {
-    bool operator() (const func_info* f1, const func_info* f2) const
-    {
-      return f1->addr < f2->addr;
-    }
-    // For doing lookups by address.
-    bool operator() (Dwarf_Addr addr, const func_info* f2) const
-    {
-      return addr < f2->addr;
-    }
-    bool operator() (const func_info* f1, Dwarf_Addr addr) const
-    {
-      return f1->addr < addr;
-    }
-  };
 };
 
 
@@ -187,7 +166,8 @@ struct dwflpp
   std::string cu_name;
   std::string function_name;
 
-  dwflpp(systemtap_session & session, const std::string& user_module="");
+  dwflpp(systemtap_session & session, const std::string& user_module, bool kernel_p);
+  dwflpp(systemtap_session & session, const std::vector<std::string>& user_modules);
   ~dwflpp();
 
   void get_module_dwarf(bool required = false, bool report = true);
@@ -199,7 +179,7 @@ struct dwflpp
   Dwarf_Die *query_cu_containing_address(Dwarf_Addr a);
 
   bool module_name_matches(const std::string& pattern);
-  bool name_has_wildcard(const std::string& pattern);
+  static bool name_has_wildcard(const std::string& pattern);
   bool module_name_final_match(const std::string& pattern);
 
   bool function_name_matches_pattern(const std::string& name, const std::string& pattern);
@@ -301,8 +281,8 @@ private:
   Dwarf * module_dwarf;
   Dwarf_Die * function;
 
-  void setup_kernel(bool debuginfo_needed = true);
-  void setup_user(const std::string& module_name, bool debuginfo_needed = true);
+  void setup_kernel(const std::string& module_name, bool debuginfo_needed = true);
+  void setup_user(const std::vector<std::string>& modules, bool debuginfo_needed = true);
 
   typedef std::map<Dwarf*, std::vector<Dwarf_Die>*> module_cu_cache_t;
   module_cu_cache_t module_cu_cache;
@@ -397,6 +377,10 @@ private:
   int num_cached_scopes;
   Dwarf_Die *cached_scopes;
   int dwarf_getscopes_cached (Dwarf_Addr pc, Dwarf_Die **scopes);
+
+  // Returns the call frame address operations for the given program counter.
+  Dwarf_Op *get_cfa_ops (Dwarf_Addr pc);
+
 };
 
 #endif // DWFLPP_H
