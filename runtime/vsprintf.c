@@ -123,8 +123,8 @@ static char * number(char * buf, char * end, uint64_t num, int base, int size, i
 }
 
 /*
- * Calculates the number of bytes required to print the paramater num. A change to 
- * number() requires a corresponding change here, and vice versa, to ensure the 
+ * Calculates the number of bytes required to print the paramater num. A change to
+ * number() requires a corresponding change here, and vice versa, to ensure the
  * calculated size and printed size match.
  */
 static int number_size(uint64_t num, int base, int size, int precision, enum print_flag type) {
@@ -221,8 +221,9 @@ static int _stp_vsnprintf(char *buf, size_t size, const char *fmt, va_list args)
 {
 	int len;
 	uint64_t num;
-	int i, base;
+	int i, base, num_reserved, total_reserved = 0;
 	char *str, *end, c;
+	void *entry = NULL;
 	const char *s;
 	enum print_flag flags;		/* flags to number() */
 	int field_width;	/* width of output field */
@@ -236,9 +237,9 @@ static int _stp_vsnprintf(char *buf, size_t size, const char *fmt, va_list args)
 
 	/*
 	 * buf will be NULL when this function is called from _stp_printf.
-	 * This branch calculates the exact size print buffer required for 
+	 * This branch calculates the exact size print buffer required for
 	 * the string and allocates it with _stp_reserve_bytes. A change
-	 * to this branch requires a corresponding change to the same 
+	 * to this branch requires a corresponding change to the same
 	 * section of code below.
 	 */
 	if (buf == NULL) {
@@ -474,9 +475,15 @@ static int _stp_vsnprintf(char *buf, size_t size, const char *fmt, va_list args)
 	    num_bytes = STP_BUFFER_SIZE;
 	  }
 
-	  str = (char*)_stp_reserve_bytes(num_bytes);
-	  size = num_bytes;
-	  end = str + size - 1;
+	  total_reserved = num_reserved = _stp_data_write_reserve(num_bytes, &entry);
+	  if (unlikely(!entry || num_reserved == 0)) {
+		  atomic_inc(&_stp_transport_failures);
+		  return 0;
+	  }
+
+	  size = num_bytes; /* total size */
+	  str = (char *) _stp_data_entry_data(entry);
+	  end = str + num_reserved - 1;
 
 	} else {
           str = buf;
@@ -489,6 +496,21 @@ static int _stp_vsnprintf(char *buf, size_t size, const char *fmt, va_list args)
 	 * required in the output buffer.
 	 */
 	for (; *fmt ; ++fmt) {
+		if (str > end && !buf) {
+			int num_reserved;
+			/* commit data and request another print buffer */
+			_stp_data_write_commit(entry);
+
+			num_reserved = _stp_data_write_reserve(size - total_reserved, &entry);
+			if (unlikely(!entry || num_reserved == 0)) {
+				atomic_inc(&_stp_transport_failures);
+				return 0;
+			}
+
+			str = (char *) _stp_data_entry_data(entry);
+			end = str + num_reserved - 1;
+			total_reserved += num_reserved;
+		}
 		if (*fmt != '%') {
 			if (str <= end)
 				*str = *fmt;
@@ -785,6 +807,9 @@ static int _stp_vsnprintf(char *buf, size_t size, const char *fmt, va_list args)
           else if (size > 0)
                   /* don't write out a null byte if the buf size is zero */
                   *end = '\0';
+	}
+	else {
+		_stp_data_write_commit(entry);
 	}
 	return str-buf;
 }

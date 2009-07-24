@@ -1,4 +1,4 @@
-/* -*- linux-c -*- 
+/* -*- linux-c -*-
  * Print Functions
  * Copyright (C) 2007-2009 Red Hat Inc.
  *
@@ -115,27 +115,6 @@ static inline void _stp_print_flush(void)
 #define STP_MAXBINARYARGS 127
 #endif
 
-
-/** Reserves space in the output buffer for direct I/O.
- */
-static void * _stp_reserve_bytes (int numbytes)
-{
-	_stp_pbuf *pb = per_cpu_ptr(Stp_pbuf, smp_processor_id());
-	int size = STP_BUFFER_SIZE - pb->len;
-	void * ret;
-
-	if (unlikely(numbytes == 0 || numbytes > STP_BUFFER_SIZE))
-		return NULL;
-
-	if (unlikely(numbytes > size))
-		_stp_print_flush();
-
-	ret = pb->buf + pb->len;
-	pb->len += numbytes;
-	return ret;
-}
-
-
 /** Write 64-bit args directly into the output stream.
  * This function takes a variable number of 64-bit arguments
  * and writes them directly into the output stream.  Marginally faster
@@ -144,22 +123,35 @@ static void * _stp_reserve_bytes (int numbytes)
  */
 static void _stp_print_binary (int num, ...)
 {
+	unsigned long flags;
 	va_list vargs;
-	int i;
-	int64_t *args;
-	
+	int i, len;
+	int64_t *buf, *end;
+	void *entry = NULL;
+	size_t bytes_reserved;
+
 	if (unlikely(num > STP_MAXBINARYARGS))
 		num = STP_MAXBINARYARGS;
 
-	args = _stp_reserve_bytes(num * sizeof(int64_t));
+	va_start(vargs, num);
+	len = num * sizeof(int64_t);
 
-	if (likely(args != NULL)) {
-		va_start(vargs, num);
-		for (i = 0; i < num; i++) {
-			args[i] = va_arg(vargs, int64_t);
+	spin_lock_irqsave(&_stp_print_lock, flags);
+	while (len > 0) {
+		bytes_reserved = _stp_data_write_reserve(len, &entry);
+		buf = (int64_t *) _stp_data_entry_data(entry);
+		if (likely(buf != NULL)) {
+			end = buf + bytes_reserved * sizeof(int64_t);
+			while (buf <= end) {
+				*buf = va_arg(vargs, int64_t);
+				buf++;
+			}
+			_stp_data_write_commit(entry);
+			len -= bytes_reserved;
 		}
-		va_end(vargs);
 	}
+	spin_unlock_irqrestore(&_stp_print_lock, flags);
+	va_end(vargs);
 }
 
 /** Print into the print buffer.
@@ -169,9 +161,12 @@ static void _stp_print_binary (int num, ...)
  */
 static void _stp_printf (const char *fmt, ...)
 {
+	unsigned long flags;
 	va_list args;
 	va_start(args, fmt);
+	spin_lock_irqsave(&_stp_print_lock, flags);
 	_stp_vsnprintf(NULL, 0, fmt, args);
+	spin_unlock_irqrestore(&_stp_print_lock, flags);
 	va_end(args);
 }
 
@@ -181,37 +176,13 @@ static void _stp_printf (const char *fmt, ...)
 
 static void _stp_print (const char *str)
 {
-	_stp_pbuf *pb = per_cpu_ptr(Stp_pbuf, smp_processor_id());
-	char *end = pb->buf + STP_BUFFER_SIZE;
-	char *ptr = pb->buf + pb->len;
-	char *instr = (char *)str;
-
-	while (ptr < end && *instr)
-		*ptr++ = *instr++;
-
-	/* Did loop terminate due to lack of buffer space? */
-	if (unlikely(*instr)) {
-		/* Don't break strings across subbufs. */
-		/* Restart after flushing. */
-		_stp_print_flush();
-		end = pb->buf + STP_BUFFER_SIZE;
-		ptr = pb->buf + pb->len;
-		instr = (char *)str;
-		while (ptr < end && *instr)
-			*ptr++ = *instr++;
-	}
-	pb->len = ptr - pb->buf;
+	size_t len = strnlen(str, STP_BUFFER_SIZE);
+	_stp_print_transport(str, len);
 }
 
 static void _stp_print_char (const char c)
 {
-	_stp_pbuf *pb = per_cpu_ptr(Stp_pbuf, smp_processor_id());
-	int size = STP_BUFFER_SIZE - pb->len;
-	if (unlikely(1 >= size))
-		_stp_print_flush();
-	
-	pb->buf[pb->len] = c;
-	pb->len ++;
+	_stp_print_transport(&c, 1);
 }
 
 static void _stp_print_kernel_info(char *vstr, int ctx, int num_probes)
@@ -219,8 +190,8 @@ static void _stp_print_kernel_info(char *vstr, int ctx, int num_probes)
 #ifdef DEBUG_MEM
 	printk(KERN_DEBUG "%s: systemtap: %s, base: %p, memory: %lu+%lu+%u+%u+%u data+text+ctx+net+alloc, probes: %d\n",
 	       THIS_MODULE->name,
-	       vstr, 
-	       THIS_MODULE->module_core,  
+	       vstr,
+	       THIS_MODULE->module_core,
 	       (unsigned long) (THIS_MODULE->core_size - THIS_MODULE->core_text_size),
                (unsigned long) THIS_MODULE->core_text_size,
 	       ctx,
@@ -230,8 +201,8 @@ static void _stp_print_kernel_info(char *vstr, int ctx, int num_probes)
 #else
 	printk(KERN_DEBUG "%s: systemtap: %s, base: %p, memory: %lu+%lu+%u+%u data+text+ctx+net, probes: %d\n",
 	       THIS_MODULE->name,
-	       vstr, 
-	       THIS_MODULE->module_core,  
+	       vstr,
+	       THIS_MODULE->module_core,
 	       (unsigned long) (THIS_MODULE->core_size - THIS_MODULE->core_text_size),
                (unsigned long) THIS_MODULE->core_text_size,
 	       ctx,

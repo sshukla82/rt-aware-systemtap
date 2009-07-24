@@ -1,4 +1,4 @@
-/* -*- linux-c -*- 
+/* -*- linux-c -*-
  * Print Flush Function
  * Copyright (C) 2007-2008 Red Hat Inc.
  *
@@ -17,6 +17,31 @@
  */
 
 static DEFINE_SPINLOCK(_stp_print_lock);
+
+void _stp_print_transport(const char *buf, size_t len)
+{
+	unsigned long flags;
+	void *entry = NULL;
+	char *bufp = (char *) buf;
+
+	dbug_trans(1, "calling _stp_data_write...\n");
+	spin_lock_irqsave(&_stp_print_lock, flags);
+	while (len > 0) {
+		size_t bytes_reserved;
+
+		bytes_reserved = _stp_data_write_reserve(len, &entry);
+		if (likely(entry && bytes_reserved > 0)) {
+			memcpy(_stp_data_entry_data(entry), bufp, bytes_reserved);
+			_stp_data_write_commit(entry);
+			bufp += bytes_reserved;
+			len -= bytes_reserved;
+		} else {
+			atomic_inc(&_stp_transport_failures);
+			break;
+		}
+	}
+	spin_unlock_irqrestore(&_stp_print_lock, flags);
+}
 
 void EXPORT_FN(stp_print_flush)(_stp_pbuf *pb)
 {
@@ -101,28 +126,7 @@ void EXPORT_FN(stp_print_flush)(_stp_pbuf *pb)
 
 #else  /* STP_TRANSPORT_VERSION != 1 */
 	{
-		unsigned long flags;
-		char *bufp = pb->buf;
-
-		dbug_trans(1, "calling _stp_data_write...\n");
-		spin_lock_irqsave(&_stp_print_lock, flags);
-		while (len > 0) {
-			size_t bytes_reserved;
-
-			bytes_reserved = _stp_data_write_reserve(len, &entry);
-			if (likely(entry && bytes_reserved > 0)) {
-				memcpy(_stp_data_entry_data(entry), bufp,
-				       bytes_reserved);
-				_stp_data_write_commit(entry);
-				bufp += bytes_reserved;
-				len -= bytes_reserved;
-			}
-			else {
-			    atomic_inc(&_stp_transport_failures);
-			    break;
-			}
-		}
-		spin_unlock_irqrestore(&_stp_print_lock, flags);
+		_stp_print_transport(pb->buf, len);
 	}
 #endif /* STP_TRANSPORT_VERSION != 1 */
 #endif /* !STP_BULKMODE */
