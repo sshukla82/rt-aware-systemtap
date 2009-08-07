@@ -11,7 +11,6 @@
 #ifndef _PRINT_C_
 #define _PRINT_C_
 
-
 #include "string.h"
 #include "vsprintf.c"
 #include "print.h"
@@ -136,7 +135,32 @@ static void _stp_print_binary (int num, ...)
 	va_start(vargs, num);
 	len = num * sizeof(int64_t);
 
+#ifdef STP_BULKMODE
+#ifndef NO_PERCPU_HEADERS
+	{
+		struct _stp_trace t = {	.sequence = _stp_seq_inc(),
+				.pdu_len = len};
+
+		bytes_reserved = _stp_data_write_reserve(sizeof(struct _stp_trace), &entry);
+		if (likely(entry && bytes_reserved > 0)) {
+			/* prevent unaligned access by using memcpy() */
+			memcpy(_stp_data_entry_data(entry), &t, sizeof(t));
+			_stp_data_write_commit(entry);
+		}
+		else {
+			atomic_inc(&_stp_transport_failures);
+			return;
+		}
+	}
+#endif
+#elif STP_TRANSPORT_VERSION == 1
+	if (unlikely(_stp_ctl_write(STP_REALTIME_DATA, pb->buf, len) <= 0))
+		atomic_inc (&_stp_transport_failures);
+	return;
+#else /* !STP_BULKMODE && STP_TRANSPORT_VERSION != 1 */
 	spin_lock_irqsave(&_stp_print_lock, flags);
+#endif
+
 	while (len > 0) {
 		bytes_reserved = _stp_data_write_reserve(len, &entry);
 		buf = (int64_t *) _stp_data_entry_data(entry);
@@ -150,7 +174,10 @@ static void _stp_print_binary (int num, ...)
 			len -= bytes_reserved;
 		}
 	}
+
+#ifndef STP_BULKMODE
 	spin_unlock_irqrestore(&_stp_print_lock, flags);
+#endif
 	va_end(vargs);
 }
 
@@ -164,9 +191,7 @@ static void _stp_printf (const char *fmt, ...)
 	unsigned long flags;
 	va_list args;
 	va_start(args, fmt);
-	spin_lock_irqsave(&_stp_print_lock, flags);
 	_stp_vsnprintf(NULL, 0, fmt, args);
-	spin_unlock_irqrestore(&_stp_print_lock, flags);
 	va_end(args);
 }
 

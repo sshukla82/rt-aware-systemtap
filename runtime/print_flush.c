@@ -15,20 +15,42 @@
  *
  * @note Preemption must be disabled to use this.
  */
-
-static DEFINE_SPINLOCK(_stp_print_lock);
-
 void _stp_print_transport(const char *buf, size_t len)
 {
 	unsigned long flags;
 	void *entry = NULL;
 	char *bufp = (char *) buf;
+	size_t bytes_reserved;
 
 	dbug_trans(1, "calling _stp_data_write...\n");
-	spin_lock_irqsave(&_stp_print_lock, flags);
-	while (len > 0) {
-		size_t bytes_reserved;
 
+#ifdef STP_BULKMODE
+#ifndef NO_PERCPU_HEADERS
+	{
+		struct _stp_trace t = {	.sequence = _stp_seq_inc(),
+				.pdu_len = len};
+
+		bytes_reserved = _stp_data_write_reserve(sizeof(struct _stp_trace), &entry);
+		if (likely(entry && bytes_reserved > 0)) {
+			/* prevent unaligned access by using memcpy() */
+			memcpy(_stp_data_entry_data(entry), &t, sizeof(t));
+			_stp_data_write_commit(entry);
+		}
+		else {
+			atomic_inc(&_stp_transport_failures);
+			return;
+		}
+	}
+#endif
+#elif STP_TRANSPORT_VERSION == 1
+	if (unlikely(_stp_ctl_write(STP_REALTIME_DATA, pb->buf, len) <= 0))
+		atomic_inc (&_stp_transport_failures);
+	return;
+#else /* !STP_BULKMODE && STP_TRANSPORT_VERSION != 1 */
+	spin_lock_irqsave(&_stp_print_lock, flags);
+#endif
+
+	while (len > 0) {
 		bytes_reserved = _stp_data_write_reserve(len, &entry);
 		if (likely(entry && bytes_reserved > 0)) {
 			memcpy(_stp_data_entry_data(entry), bufp, bytes_reserved);
@@ -40,7 +62,10 @@ void _stp_print_transport(const char *buf, size_t len)
 			break;
 		}
 	}
+
+#ifndef STP_BULKMODE
 	spin_unlock_irqrestore(&_stp_print_lock, flags);
+#endif
 }
 
 void EXPORT_FN(stp_print_flush)(_stp_pbuf *pb)
@@ -125,9 +150,7 @@ void EXPORT_FN(stp_print_flush)(_stp_pbuf *pb)
 		atomic_inc (&_stp_transport_failures);
 
 #else  /* STP_TRANSPORT_VERSION != 1 */
-	{
-		_stp_print_transport(pb->buf, len);
-	}
+	_stp_print_transport(pb->buf, len);
 #endif /* STP_TRANSPORT_VERSION != 1 */
 #endif /* !STP_BULKMODE */
 }

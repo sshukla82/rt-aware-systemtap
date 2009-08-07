@@ -15,6 +15,8 @@
 #include "print.h"
 #include "transport/transport.h"
 
+static DEFINE_SPINLOCK(_stp_print_lock);
+
 static int skip_atoi(const char **s)
 {
 	int i=0;
@@ -230,6 +232,7 @@ static int _stp_vsnprintf(char *buf, size_t size, const char *fmt, va_list args)
 	int precision;		/* min. # of digits for integers; max
 				   number of chars for from string */
 	int qualifier;		/* 'h', 'l', or 'L' for integer fields */
+	unsigned long lock_flags = 0;
 
 	/* Reject out-of-range values early */
 	if (unlikely((int) size < 0))
@@ -474,6 +477,32 @@ static int _stp_vsnprintf(char *buf, size_t size, const char *fmt, va_list args)
 	  if (num_bytes > STP_BUFFER_SIZE) {
 	    num_bytes = STP_BUFFER_SIZE;
 	  }
+
+#ifdef STP_BULKMODE
+#ifndef NO_PERCPU_HEADERS
+	{
+		struct _stp_trace t = {	.sequence = _stp_seq_inc(),
+				.pdu_len = num_bytes };
+
+		num_reserved = _stp_data_write_reserve(sizeof(struct _stp_trace), &entry);
+		if (likely(entry && num_reserved > 0)) {
+			/* prevent unaligned access by using memcpy() */
+			memcpy(_stp_data_entry_data(entry), &t, sizeof(t));
+			_stp_data_write_commit(entry);
+		}
+		else {
+			atomic_inc(&_stp_transport_failures);
+			return 0;
+		}
+	}
+#endif
+#elif STP_TRANSPORT_VERSION == 1
+	if (unlikely(_stp_ctl_write(STP_REALTIME_DATA, pb->buf, len) <= 0))
+		atomic_inc (&_stp_transport_failures);
+	return 0;
+#else /* !STP_BULKMODE && STP_TRANSPORT_VERSION != 1 */
+	spin_lock_irqsave(&_stp_print_lock, lock_flags);
+#endif
 
 	  total_reserved = num_reserved = _stp_data_write_reserve(num_bytes, &entry);
 	  if (unlikely(!entry || num_reserved == 0)) {
@@ -810,6 +839,9 @@ static int _stp_vsnprintf(char *buf, size_t size, const char *fmt, va_list args)
 	}
 	else {
 		_stp_data_write_commit(entry);
+#ifndef STP_BULKMODE
+		spin_unlock_irqrestore(&_stp_print_lock, lock_flags);
+#endif
 	}
 	return str-buf;
 }
