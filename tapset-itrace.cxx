@@ -211,12 +211,13 @@ itrace_derived_probe_group::emit_module_decls (systemtap_session& s)
   s.op->newline() << "struct stap_itrace_probe *p = container_of(tgt, struct stap_itrace_probe, tgt);";
 
   s.op->newline() << "if (register_p) ";
-  s.op->indent(1);
+  s.op->newline(1) << "rc = usr_itrace_init(p->single_step, tsk, p);";
+  // NB: !register_p case -- i.e., thread death, is handled by runtime/itrace.c death callbacks
 
-  s.op->newline() << "rc = usr_itrace_init(p->single_step, tsk, p);";
-  s.op->newline(-1) << "else";
-  s.op->newline(1) << "remove_usr_itrace_info(find_itrace_info(p->tgt.pid));";
-  s.op->newline(-1) << "return rc;";
+  // Handle errors.  XXX: should do it like uprobes: increment skipped count etc.
+  s.op->newline(-1) << "if (rc) printk(KERN_ERR \"itrace reg/unreg %s failed %d\", p->pp, rc);";
+
+  s.op->newline() << "return rc;";
   s.op->newline(-1) << "}";
 
   s.op->newline() << "static struct stap_itrace_probe stap_itrace_probes[] = {";
@@ -268,21 +269,23 @@ itrace_derived_probe_group::emit_module_init (systemtap_session& s)
 
   // 'arch_has_single_step' needs to be defined for either single step mode
   // or branch mode.
+  s.op->newline() << "probe_point = p->pp;";
   s.op->newline() << "if (!arch_has_single_step()) {";
-  s.op->indent(1);
-  s.op->newline() << "_stp_error (\"insn probe init: arch does not support step mode\");";
-  s.op->newline() << "rc = -EPERM;";
+  s.op->newline(1) << "_stp_error (\"arch does not support insn step mode\");";
+  s.op->newline() << "rc = -ENOSYS;";
   s.op->newline() << "break;";
   s.op->newline(-1) << "}";
   s.op->newline() << "if (!p->single_step && !arch_has_block_step()) {";
-  s.op->indent(1);
-  s.op->newline() << "_stp_error (\"insn probe init: arch does not support block step mode\");";
-  s.op->newline() << "rc = -EPERM;";
+  s.op->newline(1) << "_stp_error (\"arch does not support block step mode\");";
+  s.op->newline() << "rc = -ENOSYS;";
   s.op->newline() << "break;";
   s.op->newline(-1) << "}";
 
   s.op->newline() << "rc = stap_register_task_finder_target(&p->tgt);";
+  s.op->newline() << "if (rc) break;";
   s.op->newline(-1) << "}";
+
+  s.op->newline() << "if (rc) usr_itrace_dtor_all();"; // must clean any already-registered probes
 }
 
 
@@ -292,7 +295,7 @@ itrace_derived_probe_group::emit_module_exit (systemtap_session& s)
   if (probes_by_path.empty() && probes_by_pid.empty()) return;
   s.op->newline();
   s.op->newline() << "/* ---- itrace probes ---- */";
-  s.op->newline() << "cleanup_usr_itrace();";
+  s.op->newline() << "usr_itrace_dtor_all(); // clean them all";
 }
 
 void

@@ -194,7 +194,7 @@ if {![utrace_p]} {
     xfail "$TEST_NAME : no kernel single step support"
 } else {
     set script [format $itrace_single1_script $exepath]
-    stap_run $TEST_NAME run_ls_1_sec $itrace_single1_script_output -e $script
+    stap_run $TEST_NAME run_ls_1_sec $itrace_single1_script_output -DDEBUG_ITRACE -DDEBUG_TASK_FINDER -e $script
 }
 
 set TEST_NAME "itrace_single2"
@@ -206,8 +206,12 @@ if {![utrace_p]} {
     xfail "$TEST_NAME : no kernel single step support"
 } else {
     set script [format $itrace_single2_script $exepath]
-    stap_run $TEST_NAME run_ls_1_sec $itrace_single2_script_output -e $script
+    stap_run $TEST_NAME run_ls_1_sec $itrace_single2_script_output -DDEBUG_ITRACE -DDEBUG_TASK_FINDER -e $script
 }
+
+
+return
+
 
 # Run the block step tests
 set TEST_NAME "itrace_block1"
@@ -219,7 +223,7 @@ if {![utrace_p]} {
     xfail "$TEST_NAME : no kernel block step support"
 } else {
     set script [format $itrace_block1_script $exepath]
-    stap_run $TEST_NAME run_ls_1_sec $itrace_block1_script_output -e $script
+    stap_run $TEST_NAME run_ls_1_sec $itrace_block1_script_output -DDEBUG_ITRACE -e $script
 }
 
 set TEST_NAME "itrace_block2"
@@ -231,7 +235,7 @@ if {![utrace_p]} {
     xfail "$TEST_NAME : no kernel block step support"
 } else {
     set script [format $itrace_block2_script $exepath]
-    stap_run $TEST_NAME run_ls_1_sec $itrace_block2_script_output -e $script
+    stap_run $TEST_NAME run_ls_1_sec $itrace_block2_script_output -DDEBUG_ITRACE -e $script
 }
 
 # Cleanup

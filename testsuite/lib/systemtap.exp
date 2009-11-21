@@ -178,7 +178,9 @@ proc shutdown_server {} {
     }
 
     # Remove the temporary stap script
-    exec /bin/rm -fr $net_path
+    if { $net_path != "" } then {
+        exec /bin/rm -fr $net_path
+    }
 }
 
 proc get_system_info {} {

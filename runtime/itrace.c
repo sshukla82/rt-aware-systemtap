@@ -13,7 +13,7 @@
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/list.h>
-#include <linux/spinlock.h>
+#include <linux/mutex.h>
 #include <linux/err.h>
 #include <linux/sched.h>
 #include <linux/rcupdate.h>
@@ -35,8 +35,7 @@
 #include "utrace_compatibility.h"
 
 #ifndef put_task_struct
-#define put_task_struct(t)	\
-	BUG_ON(atomic_dec_and_test(&tsk->usage))
+#define put_task_struct(t) BUG_ON(atomic_dec_and_test(&(t)->usage))
 #endif
 
 #ifdef CONFIG_PPC
@@ -69,16 +68,15 @@ struct itrace_info {
 	struct list_head link;
 };
 
-static u32 debug = 0 /* 1 */;
-
 static LIST_HEAD(usr_itrace_info);
-static spinlock_t itrace_lock;
+static DEFINE_MUTEX(itrace_lock);
 static struct itrace_info *create_itrace_info(
 	struct task_struct *tsk, u32 step_flag,
 	struct stap_itrace_probe *itrace_probe);
-
+void static remove_itrace_info(struct itrace_info *ui);
 
 /* Note: __access_process_vm moved to access_process_vm.h */
+
 
 #ifdef UTRACE_ORIG_VERSION
 static u32 usr_itrace_report_quiesce(struct utrace_attached_engine *engine,
@@ -94,7 +92,26 @@ static u32 usr_itrace_report_quiesce(enum utrace_resume_action action,
 	struct itrace_info *ui;
 
 	ui = rcu_dereference(engine->data);
-	WARN_ON(!ui);
+
+        /* Already detached/deallocated from another callback? */
+        if (ui == NULL) return UTRACE_DETACH;
+
+#ifdef DEBUG_ITRACE
+        _stp_dbug (__FUNCTION__,__LINE__,"pid %d step %d\n", ui->tsk->pid, ui->step_flag);
+#endif
+
+        /* We've been asked to detach; shutdown must be under way.  */
+        if (ui->step_flag == UTRACE_DETACH)
+          {
+            mutex_lock(&itrace_lock);
+            list_del(&ui->link);
+            put_task_struct(tsk);
+            kfree(ui);
+            engine->data = NULL;
+            mutex_unlock(&itrace_lock);
+            return UTRACE_DETACH;
+          }
+
 
 #ifdef UTRACE_ORIG_VERSION
 	return (ui->step_flag | UTRACE_ACTION_NEWSTATE);
@@ -102,6 +119,71 @@ static u32 usr_itrace_report_quiesce(enum utrace_resume_action action,
 	return (event == 0 ? ui->step_flag : UTRACE_RESUME);
 #endif
 }
+
+
+#ifdef UTRACE_ORIG_VERSION
+static u32 usr_itrace_report_death(struct utrace_attached_engine *e,
+                                   struct task_struct *tsk)
+#else
+static u32 usr_itrace_report_death(struct utrace_attached_engine *e,
+                                   struct task_struct *tsk, bool group_dead, int signal)
+#endif
+{
+  struct itrace_info *ui = rcu_dereference(e->data);
+
+  /* Already detached/deallocated from another callback? */
+  if (ui == NULL) return UTRACE_DETACH;
+
+#ifdef DEBUG_ITRACE
+        _stp_dbug (__FUNCTION__,__LINE__,"pid %d step %d\n", ui->tsk->pid, ui->step_flag);
+#endif
+
+  /* even if not (ui->step_flag == UTRACE_DETACH) */
+  mutex_lock(&itrace_lock);
+  list_del(&ui->link);
+  put_task_struct(tsk);
+  kfree(ui);
+  e->data = NULL;
+  mutex_unlock(&itrace_lock);
+
+  return UTRACE_DETACH;
+}
+
+
+#ifdef UTRACE_ORIG_VERSION
+static u32 usr_itrace_report_exec(struct utrace_attached_engine *e,
+                                  struct task_struct *tsk,
+                                  const struct linux_binprm *bprm,
+                                  struct pt_regs *regs)
+#else
+static u32 usr_itrace_report_exec(enum utrace_resume_action action,
+                                  struct utrace_attached_engine *e,
+                                  struct task_struct *tsk,
+                                  const struct linux_binfmt *fmt,
+                                  const struct linux_binprm *bprm,
+                                  struct pt_regs *regs)
+#endif
+{
+  struct itrace_info *ui = rcu_dereference(e->data);
+
+  /* Already detached/deallocated from another callback? */
+  if (ui == NULL) return UTRACE_DETACH;
+
+#ifdef DEBUG_ITRACE
+        _stp_dbug (__FUNCTION__,__LINE__,"pid %d step %d\n", ui->tsk->pid, ui->step_flag);
+#endif
+
+  /* even if not (ui->step_flag == UTRACE_DETACH) */
+  mutex_lock(&itrace_lock);
+  list_del(&ui->link);
+  put_task_struct(ui->tsk);
+  kfree(ui);
+  e->data = NULL;
+  mutex_unlock(&itrace_lock);
+
+  return UTRACE_DETACH;
+}
+
 
 
 #ifdef UTRACE_ORIG_VERSION
@@ -125,15 +207,27 @@ static u32 usr_itrace_report_signal(u32 action,
 	struct itrace_info *ui;
 	u32 return_flags;
 	unsigned long data = 0;
+
 #ifdef CONFIG_PPC
 	data = mfspr(SPRN_SDAR);
 #endif
 
 	ui = rcu_dereference(engine->data);
-	WARN_ON(!ui);
-	
-	if (info->si_signo != SIGTRAP || !ui)
-		return UTRACE_RESUME;
+
+        /* Already detached/deallocated from another callback? */
+        if (ui == NULL) return UTRACE_DETACH;
+
+#ifdef DEBUG_ITRACE
+        _stp_dbug (__FUNCTION__,__LINE__,"pid %d step %d\n", ui->tsk->pid, ui->step_flag);
+#endif
+
+	if (info->si_signo != SIGTRAP) 
+          return UTRACE_RESUME;
+
+        /* shutdown in progress: get out of single-stepping state,
+           await quiesce to really shut down */
+        if (ui->step_flag == UTRACE_DETACH) 
+          return UTRACE_RESUME | UTRACE_SIGNAL_IGN;
 
 #if defined(UTRACE_ORIG_VERSION) && defined(CONFIG_PPC)
 	/* Because of a ppc utrace bug, we need to stop the task here.
@@ -162,180 +256,130 @@ static u32 usr_itrace_report_signal(u32 action,
 }
 
 
-
-#ifdef UTRACE_ORIG_VERSION
-static u32 usr_itrace_report_clone(
-		struct utrace_attached_engine *engine,
-		struct task_struct *parent,
-                unsigned long clone_flags,
-		struct task_struct *child)
-#else
-static u32 usr_itrace_report_clone(enum utrace_resume_action action,
-		struct utrace_attached_engine *engine,
-		struct task_struct *parent, unsigned long clone_flags,
-		struct task_struct *child)
-#endif
-{
-	return UTRACE_RESUME;
-}
-
-#ifdef UTRACE_ORIG_VERSION
-static u32 usr_itrace_report_death(struct utrace_attached_engine *e,
-                                   struct task_struct *tsk)
-#else
-static u32 usr_itrace_report_death(struct utrace_attached_engine *e,
-	struct task_struct *tsk, bool group_dead, int signal)
-#endif
-{
-	struct itrace_info *ui = rcu_dereference(e->data);
-	WARN_ON(!ui);
-
-	return (UTRACE_DETACH);
-}
-
 static const struct utrace_engine_ops utrace_ops =
 {
 	.report_quiesce = usr_itrace_report_quiesce,
 	.report_signal = usr_itrace_report_signal,
-	.report_clone = usr_itrace_report_clone,
-	.report_death = usr_itrace_report_death
+	.report_death = usr_itrace_report_death,
+	.report_exec = usr_itrace_report_exec,
 };
-
-
-static struct itrace_info *create_itrace_info(
-	struct task_struct *tsk, u32 step_flag,
-	struct stap_itrace_probe *itrace_probe)
-{
-	struct itrace_info *ui;
-	int status;
-
-	if (debug)
-		printk(KERN_INFO "create_itrace_info: tid=%d\n", tsk->pid);
-	/* initialize ui */
-	ui = kzalloc(sizeof(struct itrace_info), GFP_USER);
-	ui->tsk = tsk;
-	ui->tid = tsk->pid;
-	ui->step_flag = step_flag;
-	ui->itrace_probe = itrace_probe;
-#ifdef CONFIG_PPC
-	ui->ppc_atomic_ss.step_over_atomic = 0;
-#endif
-	INIT_LIST_HEAD(&ui->link);
-
-	/* push ui onto usr_itrace_info */
-	spin_lock(&itrace_lock);
-	list_add(&ui->link, &usr_itrace_info);
-	spin_unlock(&itrace_lock);
-
-	/* attach a single stepping engine */
-	ui->engine = utrace_attach_task(ui->tsk, UTRACE_ATTACH_CREATE, &utrace_ops, ui);
-	if (IS_ERR(ui->engine)) {
-		printk(KERN_ERR "utrace_attach returns %ld\n",
-			PTR_ERR(ui->engine));
-		return NULL;
-	}
-	status = utrace_set_events(tsk, ui->engine, ui->engine->flags |
-		UTRACE_EVENT(QUIESCE) |
-		UTRACE_EVENT(CLONE) | UTRACE_EVENT_SIGNAL_ALL |
-		UTRACE_EVENT(DEATH));
-	if (status < 0) {
-		printk(KERN_ERR "utrace_attach returns %d\n", status);
-		return NULL;
-	}
-
-	status = utrace_control(tsk, ui->engine, UTRACE_STOP);
-	if (status == 0) {
-		status = utrace_control(tsk, ui->engine, step_flag);
-		if (status < 0) {
-			printk(KERN_ERR "utrace_control(%d) returns %d\n",
-				step_flag, status);
-			return NULL;
-		}
-	}
-
-	return ui;
-}
-
-static struct itrace_info *find_itrace_info(pid_t tid)
-{
-	struct itrace_info *ui = NULL;
-
-	spin_lock(&itrace_lock);
-	list_for_each_entry(ui, &usr_itrace_info, link) {
-		if (ui->tid == tid)
-			goto done;
-	}
-	ui = NULL;
-done:
-	spin_unlock(&itrace_lock);
-	return ui;
-}
 
 
 static int usr_itrace_init(int single_step, struct task_struct *tsk, struct stap_itrace_probe *p)
 {
-	struct itrace_info *ui;
+  struct itrace_info *ui;
+  int rc = 0;
+  struct utrace_attached_engine *e = NULL;
 
-	spin_lock_init(&itrace_lock);
-	rcu_read_lock();
-	if (tsk == NULL) {
-		printk(KERN_ERR "usr_itrace_init: Invalid task\n");
-		rcu_read_unlock();
-		return 1;
-	}
+  BUG_ON(!tsk);
 
-	get_task_struct(tsk);
-	ui = create_itrace_info(tsk, 
-		(single_step ?
-			UTRACE_SINGLESTEP : UTRACE_BLOCKSTEP), p);
-	if (!ui)
-		return 1;
+  rcu_read_lock();
+  mutex_lock(&itrace_lock);
+  get_task_struct(tsk);
 
-	put_task_struct(tsk);
-	rcu_read_unlock();
+  /* initialize ui */
+  ui = kzalloc(sizeof(struct itrace_info), GFP_USER);
+  ui->tsk = tsk;
+  ui->tid = tsk->pid;
+  ui->step_flag = single_step ? UTRACE_SINGLESTEP : UTRACE_BLOCKSTEP;
+  ui->itrace_probe = p;
+#ifdef CONFIG_PPC
+  ui->ppc_atomic_ss.step_over_atomic = 0;
+#endif
+  INIT_LIST_HEAD(&ui->link);
 
-        if (debug)
-		printk(KERN_INFO "usr_itrace_init: completed for tid = %d\n",
-		       tsk->pid);
+  /* attach a single stepping engine */
+  e = utrace_attach_task(ui->tsk, UTRACE_ATTACH_CREATE, &utrace_ops, ui);
+  if (IS_ERR(e)) {
+    rc = -PTR_ERR(e);
+    kfree (ui);
+    put_task_struct(tsk);
+    goto out;
+  }
+  ui->engine = e;
 
-	return 0;
+  rc = utrace_set_events(tsk, ui->engine, 
+                         UTRACE_EVENT(QUIESCE) |
+                         UTRACE_EVENT_SIGNAL_ALL |
+                         UTRACE_EVENT(EXEC) |
+                         UTRACE_EVENT(DEATH));
+  if (rc < 0) {
+    int rc2 = utrace_control(tsk, ui->engine, UTRACE_DETACH);
+    if (rc2 == -EINPROGRESS) rc2 = utrace_barrier (tsk, ui->engine);
+    put_task_struct(tsk);
+    kfree(ui);
+    e->data = NULL;
+    goto out;
+  }
+
+  rc = utrace_control(tsk, ui->engine, UTRACE_STOP); /* XXX: or _INTERRUPT? */
+  if (rc < 0) {
+    if (rc != -EINPROGRESS) /* other than expected "will stop real soon now" */
+      printk(KERN_ERR "utrace_control(STOP) returns %d\n", rc);
+    rc = 0;
+    /* FALLTHROUGH; expect quiesce callback soon */
+  }
+
+  /* Add this to the list, to ensure shutdown paths remember to clean it up. */
+  list_add(&ui->link, &usr_itrace_info);
+
+ out:
+  mutex_unlock(&itrace_lock);
+  rcu_read_unlock();
+
+#ifdef DEBUG_ITRACE
+  _stp_dbug (__FUNCTION__,__LINE__,"create_itrace_init completed %d rc %d\n", tsk->pid, rc);
+#endif
+
+  return rc;
 }
 
-void static remove_usr_itrace_info(struct itrace_info *ui)
+
+static void usr_itrace_dtor_all (void)
 {
-	struct itrace_info *tmp;
-	int status;
+  struct itrace_info *tmp;
+  struct itrace_info *ui;
+  int rc = 0;
+  unsigned loops = 0;
 
-	if (!ui)
-		return;
+  
+  while(1)
+    {
+      mutex_lock(&itrace_lock);
+      if (list_empty (&usr_itrace_info))
+        {
+          mutex_unlock(&itrace_lock);
+          break; // all done!
+        }
 
-	if (debug)
-		printk(KERN_INFO "remove_usr_itrace_info: tid=%d\n", ui->tid);
+      loops ++;
 
-	if (ui->tsk && ui->engine) {
-		status = utrace_control(ui->tsk, ui->engine, UTRACE_DETACH);
-		if (status < 0 && status != -ESRCH && status != -EALREADY)
-			printk(KERN_ERR
-			       "utrace_control(UTRACE_DETACH) returns %d\n",
-			       status);
-	}
-	spin_lock(&itrace_lock);
-	list_del(&ui->link);
-	spin_unlock(&itrace_lock);
-	kfree(ui);
-}
+      list_for_each_entry_safe(ui, tmp, &usr_itrace_info, link) 
+        {
+          struct task_struct *tsk = ui->tsk;
+#ifdef DEBUG_ITRACE
+          _stp_dbug (__FUNCTION__,__LINE__,"detach/interrupt: pid %d\n", ui->tsk->pid);
+#endif
+          ui->step_flag = UTRACE_DETACH;
+          // XXX: ui->step_flag should be atomic; guaranteed set by the time 
+          rc = utrace_control(tsk, ui->engine, UTRACE_INTERRUPT);
+          if (rc == -EINPROGRESS) /* signal etc. in progress */
+            rc = utrace_barrier(tsk, ui->engine);
+          if (rc)
+            _stp_error("utrace interrupt returned error %d on pid %d", rc, tsk->pid);
+        }
+      mutex_unlock(&itrace_lock);
 
-void static cleanup_usr_itrace(void)
-{
-	struct itrace_info *tmp;
-	struct itrace_info *ui;
+      synchronize_sched();
+      // sleep a random small amount, to make it more likely that
+      // the utraced task gets around to being interrupted -> quiesced -> detached
+      msleep (10);
+      WARN_ON ((loops % 100) == 0); // a second has gone by
+    }
 
-	if (debug)
-		printk(KERN_INFO "cleanup_usr_itrace called\n");
-
-	list_for_each_entry_safe(ui, tmp, &usr_itrace_info, link) {
-		remove_usr_itrace_info(ui);
-	}
+#ifdef DEBUG_ITRACE
+  _stp_dbug (__FUNCTION__,__LINE__,"completed, #loops: %d\n", loops);
+#endif
 }
 
 
