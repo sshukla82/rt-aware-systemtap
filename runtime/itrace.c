@@ -361,12 +361,18 @@ static void usr_itrace_dtor_all (void)
           _stp_dbug (__FUNCTION__,__LINE__,"detach/interrupt: pid %d\n", ui->tsk->pid);
 #endif
           ui->step_flag = UTRACE_DETACH;
+
+#ifdef UTRACE_ORIG_VERSION
+          // no UTRACE_INTERRUPT
+          send_sig (SIGTRAP, tsk, 1);
+#else
           // XXX: ui->step_flag should be atomic; guaranteed set by the time 
           rc = utrace_control(tsk, ui->engine, UTRACE_INTERRUPT);
           if (rc == -EINPROGRESS) /* signal etc. in progress */
             rc = utrace_barrier(tsk, ui->engine);
           if (rc)
             _stp_error("utrace interrupt returned error %d on pid %d", rc, tsk->pid);
+#endif
         }
       mutex_unlock(&itrace_lock);
 
