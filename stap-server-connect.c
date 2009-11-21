@@ -545,8 +545,26 @@ accept_connection(PRFileDesc *listenSocket)
 	  break;
 	}
 
+      /* Log the accepted connection.  */
+      printf ("Accepted connection from %d.%d.%d.%d:%d\n",
+	      (addr.inet.ip      ) & 0xff,
+	      (addr.inet.ip >>  8) & 0xff,
+	      (addr.inet.ip >> 16) & 0xff,
+	      (addr.inet.ip >> 24) & 0xff,
+	      addr.inet.port);
+      fflush (stdout);
+
       /* Accepted the connection, now handle it. */
       /*result =*/ handle_connection (tcpSocket);
+
+      printf ("Request from %d.%d.%d.%d:%d complete\n",
+	      (addr.inet.ip      ) & 0xff,
+	      (addr.inet.ip >>  8) & 0xff,
+	      (addr.inet.ip >> 16) & 0xff,
+	      (addr.inet.ip >> 24) & 0xff,
+	      addr.inet.port);
+      fflush (stdout);
+
 #if 0 /* Not necessary */
       if (result != SECSuccess)
 	{
@@ -609,8 +627,8 @@ server_main(unsigned short port, SECKEYPrivateKey *privKey, CERTCertificate *cer
 
   /* Configure the network connection. */
   addr.inet.family = PR_AF_INET;
-  addr.inet.ip	 = PR_INADDR_ANY;
-  addr.inet.port	 = PR_htons(port);
+  addr.inet.ip	   = PR_INADDR_ANY;
+  addr.inet.port   = PR_htons(port);
 
   /* Bind the address to the listener socket. */
   prStatus = PR_Bind(listenSocket, &addr);
@@ -744,7 +762,7 @@ main(int argc, char **argv)
   /* Set the cert database password callback. */
   PK11_SetPasswordFunc(myPasswd);
 
-	/* Initialize NSS. */
+  /* Initialize NSS. */
   secStatus = NSS_Init(dbdir);
   if (secStatus != SECSuccess)
     exitErr("NSS_Init");

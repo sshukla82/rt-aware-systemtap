@@ -124,6 +124,10 @@ URL: http://sourceware.org/systemtap/
 Requires: systemtap
 Requires: avahi avahi-tools nss nss-tools mktemp
 Requires: zip unzip
+Requires(post): chkconfig
+Requires(preun): chkconfig
+Requires(preun): initscripts
+Requires(postun): initscripts
 
 %description server
 This is the remote script compilation server component of systemtap.
@@ -140,14 +144,18 @@ URL: http://sourceware.org/systemtap/
 Support tools to allow applications to use static probes.
 
 %package initscript
-Summary: Systemtap Initscript
+Summary: Systemtap Initscripts
 Group: Development/System
 License: GPLv2+
 URL: http://sourceware.org/systemtap/
-Requires: systemtap-runtime, initscripts
+Requires: systemtap-runtime
+Requires(post): chkconfig
+Requires(preun): chkconfig
+Requires(preun): initscripts
+Requires(postun): initscripts
 
 %description initscript
-Initscript for Systemtap scripts.
+Initscript for Systemtap scripts
 
 %if %{with_grapher}
 %package grapher
@@ -233,7 +241,7 @@ cd ..
 %endif
 
 
-%configure %{?elfutils_config} %{sqlite_config} %{crash_config} %{docs_config} %{pie_config} %{grapher_config} %{rpm_config}
+%configure %{?elfutils_config} %{sqlite_config} %{crash_config} %{docs_config} %{pie_config} %{grapher_config} %{rpm_config} --disable-silent-rules
 make %{?_smp_mflags}
 
 %install
@@ -268,14 +276,22 @@ mv $RPM_BUILD_ROOT%{_datadir}/doc/systemtap/*.pdf docs.installed/
 mv $RPM_BUILD_ROOT%{_datadir}/doc/systemtap/tapsets docs.installed/
 %endif
 
-mkdir -p $RPM_BUILD_ROOT%{_sysconfdir}/init.d/
-install -m 755 initscript/systemtap $RPM_BUILD_ROOT%{_sysconfdir}/init.d/
+mkdir -p $RPM_BUILD_ROOT%{_sysconfdir}/rc.d/init.d/
+install -m 755 initscript/systemtap $RPM_BUILD_ROOT%{_sysconfdir}/rc.d/init.d/
 mkdir -p $RPM_BUILD_ROOT%{_sysconfdir}/systemtap
 mkdir -p $RPM_BUILD_ROOT%{_sysconfdir}/systemtap/conf.d
 mkdir -p $RPM_BUILD_ROOT%{_sysconfdir}/systemtap/script.d
-install -m 644 initscript/config $RPM_BUILD_ROOT%{_sysconfdir}/systemtap
+install -m 644 initscript/config.systemtap $RPM_BUILD_ROOT%{_sysconfdir}/systemtap/config
 mkdir -p $RPM_BUILD_ROOT%{_localstatedir}/cache/systemtap
 mkdir -p $RPM_BUILD_ROOT%{_localstatedir}/run/systemtap
+
+install -m 755 initscript/stap-server $RPM_BUILD_ROOT%{_sysconfdir}/rc.d/init.d/
+mkdir -p $RPM_BUILD_ROOT%{_sysconfdir}/stap-server
+mkdir -p $RPM_BUILD_ROOT%{_sysconfdir}/stap-server/conf.d
+mkdir -p $RPM_BUILD_ROOT%{_sysconfdir}/sysconfig
+install -m 644 initscript/config.stap-server $RPM_BUILD_ROOT%{_sysconfdir}/sysconfig/stap-server
+mkdir -p $RPM_BUILD_ROOT%{_localstatedir}/log
+touch $RPM_BUILD_ROOT%{_localstatedir}/log/stap-server.log
 
 %clean
 rm -rf ${RPM_BUILD_ROOT}
@@ -285,12 +301,55 @@ getent group stapdev >/dev/null || groupadd -r stapdev
 getent group stapusr >/dev/null || groupadd -r stapusr
 exit 0
 
+%pre server
+getent group stap-server >/dev/null || groupadd -r stap-server
+getent passwd stap-server >/dev/null || useradd -c "Systemtap Compile Server" -g stap-server -d %{_localstatedir}/lib/stap-server -m -r -s /sbin/nologin stap-server
+chmod 755 %{_localstatedir}/lib/stap-server
+exit 0
+
+%post server
+chmod 664 %{_localstatedir}/log/stap-server.log
+chown stap-server %{_localstatedir}/log/stap-server.log
+chgrp stap-server %{_localstatedir}/log/stap-server.log
+/sbin/chkconfig --add stap-server
+exit 0
+
+%preun server
+# Check that this is the actual deinstallation of the package, as opposed to
+# just removing the old package on upgrade.
+if [ $1 = 0 ] ; then
+    /sbin/service stap-server stop >/dev/null 2>&1
+    /sbin/chkconfig --del stap-server
+fi
+exit 0
+
+%postun server
+# Check whether this is an upgrade of the package.
+# If so, restart the service if it's running
+if [ "$1" -ge "1" ] ; then
+    /sbin/service stap-server condrestart >/dev/null 2>&1 || :
+fi
+exit 0
+
 %post initscript
-chkconfig --add systemtap
+/sbin/chkconfig --add systemtap
 exit 0
 
 %preun initscript
-chkconfig --del systemtap
+# Check that this is the actual deinstallation of the package, as opposed to
+# just removing the old package on upgrade.
+if [ $1 = 0 ] ; then
+    /sbin/service systemtap stop >/dev/null 2>&1
+    /sbin/chkconfig --del systemtap
+fi
+exit 0
+
+%postun initscript
+# Check whether this is an upgrade of the package.
+# If so, restart the service if it's running
+if [ "$1" -ge "1" ] ; then
+    /sbin/service systemtap condrestart >/dev/null 2>&1 || :
+fi
 exit 0
 
 %post
@@ -318,6 +377,7 @@ exit 0
 %{_bindir}/stap-gen-cert
 %{_bindir}/stap-authorize-cert
 %{_bindir}/stap-authorize-signing-cert
+%{_bindir}/stap-sign-module
 %{_mandir}/man1/*
 %{_mandir}/man3/*
 
@@ -373,6 +433,12 @@ exit 0
 %{_bindir}/stap-server-connect
 %{_bindir}/stap-sign-module
 %{_mandir}/man8/stap-server.8*
+%{_sysconfdir}/rc.d/init.d/stap-server
+%dir %{_sysconfdir}/stap-server
+%dir %{_sysconfdir}/stap-server/conf.d
+%config(noreplace) %{_sysconfdir}/sysconfig/stap-server
+%{_localstatedir}/log/stap-server.log
+%doc initscript/README.stap-server
 
 %files sdt-devel
 %defattr(-,root,root)
@@ -381,14 +447,14 @@ exit 0
 
 %files initscript
 %defattr(-,root,root)
-%{_sysconfdir}/init.d/systemtap
+%{_sysconfdir}/rc.d/init.d/systemtap
 %dir %{_sysconfdir}/systemtap
 %dir %{_sysconfdir}/systemtap/conf.d
 %dir %{_sysconfdir}/systemtap/script.d
 %config(noreplace) %{_sysconfdir}/systemtap/config
 %dir %{_localstatedir}/cache/systemtap
 %dir %{_localstatedir}/run/systemtap
-%doc initscript/README.initscript
+%doc initscript/README.systemtap
 
 %if %{with_grapher}
 %files grapher

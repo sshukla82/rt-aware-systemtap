@@ -129,6 +129,7 @@ common_probe_entryfn_prologue (translator_output* o, string statestr,
   o->newline() << "c->probe_point = " << new_pp << ";";
   // reset unwound address cache
   o->newline() << "c->pi = 0;";
+  o->newline() << "c->pi_longs = 0;";
   o->newline() << "c->regparm = 0;";
   o->newline() << "c->marker_name = NULL;";
   o->newline() << "c->marker_format = NULL;";
@@ -228,7 +229,7 @@ common_probe_entryfn_epilogue (translator_output* o,
 
   // Check for excessive skip counts.
   o->newline() << "if (unlikely (atomic_read (& skipped_count) > MAXSKIPPED)) {";
-  o->newline(1) << "if (unlikely (atomic_cmpxchg(& session_state, STAP_SESSION_RUNNING, STAP_SESSION_ERROR) == STAP_SESSION_RUNNING))";
+  o->newline(1) << "if (unlikely (pseudo_atomic_cmpxchg(& session_state, STAP_SESSION_RUNNING, STAP_SESSION_ERROR) == STAP_SESSION_RUNNING))";
   o->newline() << "_stp_error (\"Skipped too many probes, check MAXSKIPPED or try again with stap -t for more details.\");";
   o->newline(-1) << "}";
 
@@ -353,10 +354,16 @@ struct dwarf_derived_probe: public derived_probe
   long maxactive_val;
   bool access_vars;
 
+  unsigned saved_longs, saved_strings;
+  dwarf_derived_probe* entry_handler;
+
   void printsig (std::ostream &o) const;
   virtual void join_group (systemtap_session& s);
   void emit_probe_local_init(translator_output * o);
-  void printargs(std::ostream &o) const;
+  void getargs(std::set<std::string> &arg_set) const;
+
+  void emit_unprivileged_assertion (translator_output*);
+  void print_dupe_stamp(ostream& o);
 
   // Pattern registration helpers.
   static void register_statement_variants(match_node * root,
@@ -373,11 +380,12 @@ protected:
                       Dwarf_Addr addr,
                       bool has_return):
     derived_probe(base, location), addr(addr), has_return(has_return),
-    has_maxactive(0), maxactive_val(0), access_vars(false)
+    has_maxactive(0), maxactive_val(0), access_vars(false),
+    saved_longs(0), saved_strings(0), entry_handler(0)
   {}
 
 private:
-  string args;
+  set<string> args;
   void saveargs(dwarf_query& q, Dwarf_Die* scope_die, dwarf_var_expanding_visitor& v);
 };
 
@@ -672,6 +680,11 @@ struct dwarf_builder: public derived_probe_builder
 		     probe_point * location,
 		     literal_map_t const & parameters,
 		     vector<derived_probe *> & finished_results);
+
+  // No action required. These probes are allowed for unprivileged users.
+  // as process owners.
+  virtual void check_unprivileged (const systemtap_session & sess,
+				   const literal_map_t & parameters) {}
 };
 
 
@@ -1806,12 +1819,16 @@ struct dwarf_var_expanding_visitor: public var_expanding_visitor
   Dwarf_Addr addr;
   block *add_block;
   block *add_call_probe; // synthesized from .return probes with saved $vars
-  map<std::string, symbol *> return_ts_map;
+  unsigned saved_longs, saved_strings; // data saved within kretprobes
+  map<std::string, expression *> return_ts_map;
   vector<Dwarf_Die> scopes;
   bool visited;
 
   dwarf_var_expanding_visitor(dwarf_query & q, Dwarf_Die *sd, Dwarf_Addr a):
-    q(q), scope_die(sd), addr(a), add_block(NULL), add_call_probe(NULL), visited(false) {}
+    q(q), scope_die(sd), addr(a), add_block(NULL), add_call_probe(NULL),
+    saved_longs(0), saved_strings(0), visited(false) {}
+  expression* gen_mapped_saved_return(target_symbol* e);
+  expression* gen_kretprobe_saved_return(target_symbol* e);
   void visit_target_symbol_saved_return (target_symbol* e);
   void visit_target_symbol_context (target_symbol* e);
   void visit_target_symbol (target_symbol* e);
@@ -1885,13 +1902,33 @@ dwarf_var_expanding_visitor::visit_target_symbol_saved_return (target_symbol* e)
   // Check and make sure we haven't already seen this target
   // variable in this return probe.  If we have, just return our
   // last replacement.
-  map<string, symbol *>::iterator i = return_ts_map.find(ts_name);
+  map<string, expression *>::iterator i = return_ts_map.find(ts_name);
   if (i != return_ts_map.end())
     {
       provide (i->second);
       return;
     }
 
+  expression *exp;
+  if (!q.has_process &&
+      strverscmp(q.sess.kernel_base_release.c_str(), "2.6.25") >= 0)
+    exp = gen_kretprobe_saved_return(e);
+  else
+    exp = gen_mapped_saved_return(e);
+
+  // Provide the variable to our parent so it can be used as a
+  // substitute for the target symbol.
+  provide (exp);
+
+  // Remember this replacement since we might be able to reuse
+  // it later if the same return probe references this target
+  // symbol again.
+  return_ts_map[ts_name] = exp;
+}
+
+expression*
+dwarf_var_expanding_visitor::gen_mapped_saved_return(target_symbol* e)
+{
   // We've got to do several things here to handle target
   // variables in return probes.
 
@@ -2120,12 +2157,75 @@ dwarf_var_expanding_visitor::visit_target_symbol_saved_return (target_symbol* e)
   // (4) Provide the '_dwarf_tvar_{name}_{num}_tmp' variable to
   // our parent so it can be used as a substitute for the target
   // symbol.
-  provide (tmpsym);
+  return tmpsym;
+}
 
-  // (5) Remember this replacement since we might be able to reuse
-  // it later if the same return probe references this target
-  // symbol again.
-  return_ts_map[ts_name] = tmpsym;
+
+expression*
+dwarf_var_expanding_visitor::gen_kretprobe_saved_return(target_symbol* e)
+{
+  // The code for this is simple.
+  //
+  // .call:
+  //   _set_kretprobe_long(index, $value)
+  //
+  // .return:
+  //   _get_kretprobe_long(index)
+  //
+  // (or s/long/string/ for things like $$parms)
+
+  unsigned index;
+  string setfn, getfn;
+
+  // Cheesy way to predetermine that this is a string -- if the second
+  // character is a '$', then we're looking at a $$vars, $$parms, or $$locals.
+  // XXX We need real type resolution here, especially if we are ever to
+  //     support an @entry construct.
+  if (e->base_name[1] == '$')
+    {
+      index = saved_strings++;
+      setfn = "_set_kretprobe_string";
+      getfn = "_get_kretprobe_string";
+    }
+  else
+    {
+      index = saved_longs++;
+      setfn = "_set_kretprobe_long";
+      getfn = "_get_kretprobe_long";
+    }
+
+  // Create the entry code
+  //   _set_kretprobe_{long|string}(index, $value)
+
+  if (add_call_probe == NULL)
+    {
+      add_call_probe = new block;
+      add_call_probe->tok = e->tok;
+    }
+
+  functioncall* set_fc = new functioncall;
+  set_fc->tok = e->tok;
+  set_fc->function = setfn;
+  set_fc->args.push_back(new literal_number(index));
+  set_fc->args.back()->tok = e->tok;
+  set_fc->args.push_back(e);
+
+  expr_statement* set_es = new expr_statement;
+  set_es->tok = e->tok;
+  set_es->value = set_fc;
+
+  add_call_probe->statements.push_back(set_es);
+
+  // Create the return code
+  //   _get_kretprobe_{long|string}(index)
+
+  functioncall* get_fc = new functioncall;
+  get_fc->tok = e->tok;
+  get_fc->function = getfn;
+  get_fc->args.push_back(new literal_number(index));
+  get_fc->args.back()->tok = e->tok;
+
+  return get_fc;
 }
 
 
@@ -2307,6 +2407,8 @@ dwarf_var_expanding_visitor::visit_target_symbol (target_symbol *e)
 
       if (! lvalue)
         ec->code += "/* pure */";
+
+      ec->code += "/* unprivileged */";
     }
   catch (const semantic_error& er)
     {
@@ -2710,6 +2812,10 @@ dwarf_derived_probe::printsig (ostream& o) const
 void
 dwarf_derived_probe::join_group (systemtap_session& s)
 {
+  // skip probes which are paired entry-handlers
+  if (!has_return && (saved_longs || saved_strings))
+    return;
+
   if (! s.dwarf_derived_probes)
     s.dwarf_derived_probes = new dwarf_derived_probe_group ();
   s.dwarf_derived_probes->enroll (this);
@@ -2737,7 +2843,9 @@ dwarf_derived_probe::dwarf_derived_probe(const string& funcname,
     has_return (q.has_return),
     has_maxactive (q.has_maxactive),
     maxactive_val (q.maxactive_val),
-    access_vars(false)
+    access_vars(false),
+    saved_longs(0), saved_strings(0),
+    entry_handler(0)
 {
   if (q.has_process)
     {
@@ -2765,7 +2873,7 @@ dwarf_derived_probe::dwarf_derived_probe(const string& funcname,
   if (has_maxactive && (maxactive_val < 0 || maxactive_val > USHRT_MAX))
     throw semantic_error ("maxactive value out of range [0,"
                           + lex_cast(USHRT_MAX) + "]",
-                          q.base_loc->tok);
+                          q.base_loc->components.front()->tok);
 
   // Expand target variables in the probe body
   if (!null_die(scope_die))
@@ -2794,21 +2902,20 @@ dwarf_derived_probe::dwarf_derived_probe(const string& funcname,
           q.base_probe->body = v.add_call_probe;
           q.has_return = false;
           q.has_call = true;
-          
+
           if (q.has_process)
-            {
-              uprobe_derived_probe *synthetic = new uprobe_derived_probe (funcname, filename, line,
-                                                                        module, section, dwfl_addr,
-                                                                        addr, q, scope_die);
-              q.results.push_back (synthetic);
-            }
+            entry_handler = new uprobe_derived_probe (funcname, filename, line,
+                                                      module, section, dwfl_addr,
+                                                      addr, q, scope_die);
           else
-            {
-              dwarf_derived_probe *synthetic = new dwarf_derived_probe (funcname, filename, line,
-                                                                        module, section, dwfl_addr,
-                                                                        addr, q, scope_die);
-              q.results.push_back (synthetic);
-            }
+            entry_handler = new dwarf_derived_probe (funcname, filename, line,
+                                                     module, section, dwfl_addr,
+                                                     addr, q, scope_die);
+
+          saved_longs = entry_handler->saved_longs = v.saved_longs;
+          saved_strings = entry_handler->saved_strings = v.saved_strings;
+
+          q.results.push_back (entry_handler);
 
           q.has_return = true;
           q.has_call = false;
@@ -2899,7 +3006,17 @@ dwarf_derived_probe::saveargs(dwarf_query& q, Dwarf_Die* scope_die, dwarf_var_ex
   if (has_return &&
       dwarf_attr_die (scope_die, DW_AT_type, &type_die) &&
       dwarf_type_name(&type_die, type_name))
-    argstream << " $return:" << type_name;
+    args.insert("$return:"+type_name);
+
+  /* Pretend that we aren't in a .return for a moment, just so we can
+   * check whether variables are accessible.  We don't want any of the
+   * entry-saving code generated during listing mode.  This works
+   * because the set of $context variables available in a .return
+   * probe (apart from $return) is the same set as available for the
+   * corresponding .call probe, since we collect those variables at
+   * .call time. */
+  bool saved_has_return = has_return;
+  q.has_return = has_return = false;
 
   Dwarf_Die arg;
   vector<Dwarf_Die> scopes = q.dw.getscopes_die(scope_die);
@@ -2927,8 +3044,7 @@ dwarf_derived_probe::saveargs(dwarf_query& q, Dwarf_Die* scope_die, dwarf_var_ex
 
         /* trick from visit_target_symbol_context */
         target_symbol *tsym = new target_symbol;
-        token *t = new token;
-        tsym->tok = t;
+        tsym->tok = q.base_loc->components.front()->tok;
         tsym->base_name = "$";
         tsym->base_name += arg_name;
 
@@ -2936,18 +3052,37 @@ dwarf_derived_probe::saveargs(dwarf_query& q, Dwarf_Die* scope_die, dwarf_var_ex
         tsym->saved_conversion_error = 0;
         v.require (tsym);
         if (!tsym->saved_conversion_error)
-           argstream << " $" << arg_name << ":" << type_name;
+           args.insert("$"+string(arg_name)+":"+type_name);
       }
     while (dwarf_siblingof (&arg, &arg) == 0);
 
-  args = argstream.str();
+  /* restore the .return status of the probe */
+  q.has_return = has_return = saved_has_return;
 }
 
 
 void
-dwarf_derived_probe::printargs(std::ostream &o) const
+dwarf_derived_probe::getargs(std::set<std::string> &arg_set) const
 {
-  o << args;
+  arg_set.insert(args.begin(), args.end());
+}
+
+
+void
+dwarf_derived_probe::emit_unprivileged_assertion (translator_output* o)
+{
+  // These probes are allowed for unprivileged users, but only in the
+  // context of processes which they own.
+  emit_process_owner_assertion (o);
+}
+
+
+void
+dwarf_derived_probe::print_dupe_stamp(ostream& o)
+{
+  // These probes are allowed for unprivileged users, but only in the
+  // context of processes which they own.
+  print_dupe_stamp_unprivileged_process_owner (o);
 }
 
 
@@ -3081,6 +3216,10 @@ dwarf_derived_probe_group::emit_module_decls (systemtap_session& s)
   s.op->newline() << "unsigned registered_p:1;";
   s.op->newline() << "const unsigned short maxactive_val;";
 
+  // data saved in the kretprobe_instance packet
+  s.op->newline() << "const unsigned short saved_longs;";
+  s.op->newline() << "const unsigned short saved_strings;";
+
   // Let's find some stats for the three embedded strings.  Maybe they
   // are small and uniform enough to justify putting char[MAX]'s into
   // the array instead of relocated char*'s.
@@ -3123,6 +3262,7 @@ dwarf_derived_probe_group::emit_module_decls (systemtap_session& s)
 
   s.op->newline() << "const unsigned long address;";
   s.op->newline() << "void (* const ph) (struct context*);";
+  s.op->newline() << "void (* const entry_ph) (struct context*);";
   s.op->newline(-1) << "} stap_dwarf_probes[] = {";
   s.op->indent(1);
 
@@ -3137,6 +3277,15 @@ dwarf_derived_probe_group::emit_module_decls (systemtap_session& s)
           s.op->line() << " .maxactive_p=1,";
           assert (p->maxactive_val >= 0 && p->maxactive_val <= USHRT_MAX);
           s.op->line() << " .maxactive_val=" << p->maxactive_val << ",";
+        }
+      if (p->saved_longs || p->saved_strings)
+        {
+          if (p->saved_longs)
+            s.op->line() << " .saved_longs=" << p->saved_longs << ",";
+          if (p->saved_strings)
+            s.op->line() << " .saved_strings=" << p->saved_strings << ",";
+          if (p->entry_handler)
+            s.op->line() << " .entry_ph=&" << p->entry_handler->name << ",";
         }
       if (p->locations[0]->optional)
         s.op->line() << " .optional_p=1,";
@@ -3182,8 +3331,8 @@ dwarf_derived_probe_group::emit_module_decls (systemtap_session& s)
 
   // Same for kretprobes
   s.op->newline();
-  s.op->newline() << "static int enter_kretprobe_probe (struct kretprobe_instance *inst,";
-  s.op->line() << " struct pt_regs *regs) {";
+  s.op->newline() << "static int enter_kretprobe_common (struct kretprobe_instance *inst,";
+  s.op->line() << " struct pt_regs *regs, int entry) {";
   s.op->newline(1) << "struct kretprobe *krp = inst->rp;";
 
   // NB: as of PR5673, the kprobe|kretprobe union struct is in BSS
@@ -3197,7 +3346,10 @@ dwarf_derived_probe_group::emit_module_decls (systemtap_session& s)
 
   common_probe_entryfn_prologue (s.op, "STAP_SESSION_RUNNING", "sdp->pp");
   s.op->newline() << "c->regs = regs;";
-  s.op->newline() << "c->pi = inst;"; // for assisting runtime's backtrace logic
+
+  // for assisting runtime's backtrace logic and accessing kretprobe data packets
+  s.op->newline() << "c->pi = inst;";
+  s.op->newline() << "c->pi_longs = sdp->saved_longs;";
 
   // Make it look like the IP is set as it wouldn't have been replaced
   // by a breakpoint instruction when calling real probe handler. Reset
@@ -3206,12 +3358,24 @@ dwarf_derived_probe_group::emit_module_decls (systemtap_session& s)
   s.op->indent(1);
   s.op->newline() << "unsigned long kprobes_ip = REG_IP(c->regs);";
   s.op->newline() << "SET_REG_IP(regs, (unsigned long) inst->rp->kp.addr);";
-  s.op->newline() << "(*sdp->ph) (c);";
+  s.op->newline() << "(entry ? sdp->entry_ph : sdp->ph) (c);";
   s.op->newline() << "SET_REG_IP(regs, kprobes_ip);";
   s.op->newline(-1) << "}";
 
   common_probe_entryfn_epilogue (s.op);
   s.op->newline() << "return 0;";
+  s.op->newline(-1) << "}";
+
+  s.op->newline();
+  s.op->newline() << "static int enter_kretprobe_probe (struct kretprobe_instance *inst,";
+  s.op->line() << " struct pt_regs *regs) {";
+  s.op->newline(1) << "return enter_kretprobe_common(inst, regs, 0);";
+  s.op->newline(-1) << "}";
+
+  s.op->newline();
+  s.op->newline() << "static int enter_kretprobe_entry_probe (struct kretprobe_instance *inst,";
+  s.op->line() << " struct pt_regs *regs) {";
+  s.op->newline(1) << "return enter_kretprobe_common(inst, regs, 1);";
   s.op->newline(-1) << "}";
 }
 
@@ -3233,6 +3397,13 @@ dwarf_derived_probe_group::emit_module_init (systemtap_session& s)
   s.op->newline(1) << "kp->u.krp.maxactive = KRETACTIVE;";
   s.op->newline(-1) << "}";
   s.op->newline() << "kp->u.krp.handler = &enter_kretprobe_probe;";
+  s.op->newline() << "#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,25)";
+  s.op->newline() << "if (sdp->entry_ph) {";
+  s.op->newline(1) << "kp->u.krp.entry_handler = &enter_kretprobe_entry_probe;";
+  s.op->newline() << "kp->u.krp.data_size = sdp->saved_longs * sizeof(int64_t) + ";
+  s.op->newline() << "                      sdp->saved_strings * MAXSTRINGLEN;";
+  s.op->newline(-1) << "}";
+  s.op->newline() << "#endif";
   // to ensure safeness of bspcache, always use aggr_kprobe on ia64
   s.op->newline() << "#ifdef __ia64__";
   s.op->newline() << "kp->dummy.addr = kp->u.krp.kp.addr;";
@@ -4634,7 +4805,7 @@ uprobe_derived_probe_group::emit_module_decls (systemtap_session& s)
   s.op->newline() << "#endif";
   // NB: duplicates common_entryfn_epilogue, but then this is not a probe entry fn epilogue.
   s.op->newline() << "if (unlikely (atomic_inc_return (& skipped_count) > MAXSKIPPED)) {";
-  s.op->newline(1) << "if (unlikely (atomic_cmpxchg(& session_state, STAP_SESSION_RUNNING, STAP_SESSION_ERROR) == STAP_SESSION_RUNNING))";
+  s.op->newline(1) << "if (unlikely (pseudo_atomic_cmpxchg(& session_state, STAP_SESSION_RUNNING, STAP_SESSION_ERROR) == STAP_SESSION_RUNNING))";
   s.op->newline() << "_stp_error (\"Skipped too many probes, check MAXSKIPPED or try again with stap -t for more details.\");";
   s.op->newline(-1) << "}";
   s.op->newline(-1) << "}";
@@ -5408,7 +5579,7 @@ struct tracepoint_derived_probe: public derived_probe
   vector <struct tracepoint_arg> args;
 
   void build_args(dwflpp& dw, Dwarf_Die& func_die);
-  void printargs (std::ostream &o) const;
+  void getargs (std::set<std::string> &arg_set) const;
   void join_group (systemtap_session& s);
   void print_dupe_stamp(ostream& o);
   void emit_probe_context_vars (translator_output* o);
@@ -5570,6 +5741,8 @@ tracepoint_var_expanding_visitor::visit_target_symbol_arg (target_symbol* e)
         }
       else
         ec->code += "/* pure */";
+
+      ec->code += "/* unprivileged */";
 
       dw.sess.functions[fdecl->name] = fdecl;
 
@@ -5786,11 +5959,11 @@ tracepoint_derived_probe::build_args(dwflpp& dw, Dwarf_Die& func_die)
 }
 
 void
-tracepoint_derived_probe::printargs(std::ostream &o) const
+tracepoint_derived_probe::getargs(std::set<std::string> &arg_set) const
 {
   for (unsigned i = 0; i < args.size(); ++i)
     if (args[i].usable)
-      o << " $" << args[i].name << ":" << args[i].c_type;
+      arg_set.insert("$"+args[i].name+":"+args[i].c_type);
 }
 
 void
@@ -6140,10 +6313,10 @@ tracepoint_builder::init_dw(systemtap_session& s)
 
   glob_t trace_glob;
   string globs[] = {
-      "/include/trace/*.h",
       "/include/trace/events/*.h",
-      "/source/include/trace/*.h",
       "/source/include/trace/events/*.h",
+      "/include/trace/*.h",
+      "/source/include/trace/*.h",
   };
   for (unsigned z = 0; z < sizeof(globs) / sizeof(globs[0]); z++)
     {

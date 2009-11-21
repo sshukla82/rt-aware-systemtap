@@ -220,7 +220,7 @@ EOF
 
 if test "x${have_xmlto}" == "xyes"; then
 AC_MSG_CHECKING([for xmlto --stringparam support])
-   xmlto --stringparam man.authors.section.enabled=0 txt conftest.xml
+   xmlto --stringparam man.authors.section.enabled=0 txt conftest.xml >/dev/null 2>&1
    if test $? == 0; then
       have_xmlto_stringparam="yes"
       AC_MSG_RESULT([yes])
@@ -578,19 +578,9 @@ date=`date +%Y-%m-%d`
 AC_DEFINE_UNQUOTED(DATE, "$date", [Configuration/build date])
 AC_SUBST(DATE, "$date")
 
-
-# This procflags business is for staprun/stapio, which need to
-# be compiled with the same bitness as the kernel.  On e.g. PPC,
-# userspace might be 32-bit default, but staprun needs to be
-# 64-bit.  See also bug #4037.
-
-processor=`uname -p`
-case "$processor" in
-ppc64) PROCFLAGS=-m64 ;;
-x86_64) PROCFLAGS=-m64 ;;
-*) PROCFLAGS=""
-esac
-AC_SUBST([PROCFLAGS])
+# Before PR4037, we used to arrange to pass CFLAGS+=-m64 for a staprun
+# being compiled on 32-bit userspace but running against 64-bit kernels.
+# This is no longer necessary.
 
 # Use tr1/unordered_map if available
 AC_LANG_PUSH(C++)
@@ -656,7 +646,7 @@ dnl Don't use this directly (when not given it is set to NONE).
 AC_DEFINE_UNQUOTED(STAP_PREFIX, "$prefix", [configure prefix location])
 
 AC_CONFIG_HEADERS([config.h:config.in])
-AC_CONFIG_FILES(Makefile doc/Makefile doc/SystemTap_Tapset_Reference/Makefile grapher/Makefile grapher/stapgraph.1 stap.1 stapprobes.3stap stapfuncs.3stap stapvars.3stap stapex.3stap staprun.8 stap-server.8 man/stapprobes.iosched.3stap man/stapprobes.netdev.3stap man/stapprobes.nfs.3stap man/stapprobes.nfsd.3stap man/stapprobes.pagefault.3stap man/stapprobes.kprocess.3stap man/stapprobes.rpc.3stap man/stapprobes.scsi.3stap man/stapprobes.signal.3stap man/stapprobes.socket.3stap man/stapprobes.tcp.3stap man/stapprobes.udp.3stap man/stapprobes.snmp.3stap initscript/systemtap)
+AC_CONFIG_FILES(Makefile doc/Makefile doc/SystemTap_Tapset_Reference/Makefile grapher/Makefile grapher/stapgraph.1 stap.1 stapprobes.3stap stapfuncs.3stap stapvars.3stap stapex.3stap staprun.8 stap-server.8 man/stapprobes.iosched.3stap man/stapprobes.irq.3stap man/stapprobes.netdev.3stap man/stapprobes.nfs.3stap man/stapprobes.nfsd.3stap man/stapprobes.pagefault.3stap man/stapprobes.kprocess.3stap man/stapprobes.rpc.3stap man/stapprobes.scsi.3stap man/stapprobes.signal.3stap man/stapprobes.socket.3stap man/stapprobes.tcp.3stap man/stapprobes.udp.3stap man/stapprobes.snmp.3stap initscript/systemtap initscript/stap-server)
 AC_CONFIG_SUBDIRS(testsuite)
 if test $enable_translator == "yes"; then
 	AC_CONFIG_FILES([run-stap], [chmod +x run-stap])

@@ -30,7 +30,7 @@ do
     apps="$app $apps"
 done
 AC_ARG_ENABLE([testapps],
-  AC_HELP_STRING([--enable-testapps=foo,bar or all],
+  AC_HELP_STRING([--enable-testapps=foo bar or all],
     [enable rebuilding of large external apps for testing <sdt.h> markers]))
 AC_MSG_NOTICE([Will test ${enable_testapps-no} apps from: $apps])
 AC_SUBST(enable_testapps)

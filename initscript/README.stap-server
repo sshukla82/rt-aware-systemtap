@@ -1,0 +1,284 @@
+stap-server initscript
+Version 0.1.0
+
+INDEX
+=====
+1. Introduction
+2. Usage
+3. Files
+4. Configuration Format
+5. Usage Examples
+
+1. Introduction
+===============
+The stap-server init script aims to provide
+- management of systemtap compile servers as a service.
+- convenient control over configured servers and individual (ad-hoc) servers.
+
+2. Usage
+========
+2.1 Synopsis
+------------
+  /sbin/service stap-server {start|stop|restart|condrestart|try-restart|force-reload|status} [options]
+
+2.2 Actions
+-----------
+One of the actions below must be specified.
+
+2.2.1 start
+ Start server(s). If a specified server is already started, this action will
+ be ignored for that server. If any server fails to start this action fails.
+ If no server is specified, the configured servers are started. If no servers
+ are configured, a server for the kernel release and architecture of the host
+ is started.
+
+2.2.2 stop
+ Stop server(s). If a specified server is already stopped, this action
+ will be ignored for that server. If a server fails to stop, this action fails.
+ If no server is specified, all currently running servers are stopped.
+
+2.2.3 restart
+ Stop and start servers again. The specified servers are stopped and restarted.
+ If no server is specified, all currently running servers are stopped and
+ restarted. If no servers are running this action behaves like 'start'.
+
+2.2.4 condrestart
+ Stop and start servers again. The specified servers are stopped and restarted.
+ If a specified server is not running, it is not started. If no server is
+ specified, all currently running servers are stopped and restarted.  If no
+ servers are running, none will be started.
+
+2.2.5 try-restart
+ This action is identical to condrestart.
+
+2.2.6 force-reload
+ Stop all running servers, reload config files and restart the service as if
+ 'start' was specified.
+
+2.2.7 status
+ Print information about running servers. Information about the specified
+ server(s) will be printed. If no server is specified, information about all
+ running servers will be printed.
+
+2.3 Options
+-----------
+The following options may be used to provide additional configuration and
+to specify servers to be managed.
+
+2.3.1 -c configfile
+ This option specifies a configuration file in addition to those described
+ in section 4 below. This file will be processed after the default
+ configuration file. If the -c option is specified more than once, the last
+ configuration file specified will be used.
+
+2.3.2 -a architecture
+ Each stap-server instance targets a specific kernel release and target
+ architecture.  This option specifies the target architecture to be associated
+ with subsequent -r options. The default architecture is the architecture of
+ the host.
+
+2.3.3 -r kernel-release
+ This option specifies a server for the given kernel release and the current
+ target architecture (specified by a previous -a option, or the default). The
+ arguments accepted by this option are the same as for stap itself. See stap(1)
+ for more details.
+
+2.3.4 -i
+ This option is a shortcut which specifies one server for each kernel
+ release installed in /lib/modules/. The default architecture is associated
+ with these servers (i.e. previous -a has no effect).
+
+3. Files
+========
+3.1 stap-server
+---------------
+/etc/init.d/stap-server
+
+This is the stap-server initscript.
+
+3.2 Configuration files
+-----------------------
+Configuration files are written in bash script.
+
+3.2.1 Global config file
+ /etc/sysconfig/stap-server
+
+ This config file is for global configuration (see section 4.1).
+
+3.2.2 Server config files
+ /etc/stap-server/conf.d/*.conf
+
+ The config files under this directory are for each server to be started by
+ default (see section see 4.2).
+
+3.3 Message Log
+---------------
+/var/log/stap-server.log
+
+All messages including server errors and detailed messages are sent
+to this file.
+Some error and warning messages are also sent to console and syslogd (syslog
+output is optional, because this service may start before syslog).
+
+3.4 Status files
+----------------
+/var/run/stap-server/<server_spec>
+
+4. Configuration Format
+=======================
+Configuration files allows us to
+  - specify global configuration of logging, server configuration files, status
+    files and other global parameters.
+  - specify which servers are to be started by default.
+
+4.1 Global Configuration file (/etc/sysconfig/stap-server)
+----------------------------------------------------------
+The global configuration file may contain settings for the following
+variables.
+
+4.1.1 CONFIG_PATH
+ Specify the absolute path of the directory containing the default server
+ configurations.
+ (default: /etc/stap-server/conf.d)
+
+4.1.2 STAT_PATH
+ Specify the absolute path of the running server status directory.
+ (default: /var/run/stap-server)
+
+4.1.3 LOG_FILE
+ Specify the absolute path of the log file
+ (default: /var/log/stap-server.log)
+
+4.1.4 STAP_USER
+ Specify the userid which will be used to run the server(s).
+ (default: stap-server)
+
+4.2 Individual server configuration (/etc/stap-server/conf.d/*.conf)
+--------------------------------------------------------------------
+Each server configuration file configures a server to be started when no
+server is specified for the 'start' action.
+
+4.2.1 ARCH
+ Specify the target architecture for this server. If ARCH is not set, the
+ architecture of the host will be used.
+
+4.2.2 RELEASE
+ Specify the kernel release for this server. If RELEASE is not set, the release
+ of the kernel running on the host will be used.
+ 
+4.3 Configuration Example
+-------------------------
+
+4.3.1 Global Config Example (/etc/sysconfig/stap-server)
+ ---
+ CONFIG_PATH=~<user>/my-stap-server-configs
+ LOG_FILE=/tmp/stap-server.log
+ ---
+
+4.3.2 Server Config Examples (/etc/stap-server/conf.d/*.conf)
+ --- file1.conf
+ ARCH=i386
+ RELEASE=2.6.18-128.el5
+ --- file2.conf
+ ARCH=powerpc
+ RELEASE=/kernels/2.6.18-92.1.18.el5/build
+ ---
+
+5. Usage Eamples
+================
+
+5.1 Package Installation
+------------------------
+After installing the systemtap package, install the systemtap-server package.
+# yum install systemtap-server
+This package will include the initscript, default configuration files and
+other files.
+
+5.2 Testing
+-----------
+See if the default service operates correctly.
+ # service stap-server start
+ # service stap-server status
+ # service stap-server restart
+ # service stap-server status
+ # service stap-server condrestart
+ # service stap-server status
+ # service stap-server force-reload
+ # service stap-server status
+ # service stap-server stop
+ # service stap-server status
+ # service stap-server condrestart
+ # service stap-server status       # <---no server should be running
+
+If there are no errors, the service is correctly installed.
+
+5.3 Service Enabling
+--------------------
+After all test have passed, enable the stap-server initscript.
+# chkconfig stap-server on
+
+5.4 Starting Specific Servers
+-----------------------------
+5.4.1 Starting a server for an installed kernel release
+
+  # service stap-server start -r <release>
+   
+  where <release> refers to a kernel installed in /lib/modules
+
+5.4.2 Starting servers for all installed kernel releases
+
+  # service stap-server start -i
+
+5.4.3 Starting a server for a kernel release not installed (cross compiling)
+
+  # service stap-server start -a <arch> -r /<builddir>
+   
+  where <arch> is the target architecture and
+        <buildder> is the absolute path to the kernel's build tree.
+
+5.5 Managing Specific Servers
+-----------------------------
+Specifying an architecture and/or release for all other actions will act on
+that server alone (if it is running). For example
+
+  # service stap-server status -r 2.6.18-128.el5
+  # service stap-server restart -a i386 -r 2.6.18-92.1.18.el5
+  # service stap-server stop -a powerpc -r /kernels/2.6.18-92.1.18.el5/build
+
+5.6 Configuring Default Servers
+-------------------------------
+5.6.1 Create Server Config Files
+ Each file in /etc/stap-server/conf.d/*.conf represents a server to be started
+ by default if no servers are specified on the 'start' action. Each such
+ config file may set the ARCH and/or RELEASE variables which correspond to the
+ -a and -r command line options respectively.
+
+ # vi /etc/stap-server/conf.d/2.6.18-128.el5.conf
+ ARCH=     # default arch
+ RELEASE=2.6.18-128.el5
+
+ # vi /etc/stap-server/conf.d/powerpc.conf
+ ARCH=powerpc
+ RELEASE=  #default release
+
+ # vi /etc/stap-server/conf.d/native.conf
+ ARCH=     #default arch
+ RELEASE=  #default release
+
+5.6.2 Starting Default Servers
+
+ # service stap-server start
+
+5.6.2 Restarting After Changing the Configuration
+
+ To restart the service after global configuration changes and/or when default
+ servers have been added to removed:
+
+ # service stap-server force-reload
+
+5.7 Stopping the stap-server Service
+------------------------------------
+
+ To stop all running servers:
+
+ # service stap-server stop

@@ -1310,7 +1310,7 @@ Optional Features:
                           results to a central public collection point
                           (default is disabled). Optional EMAIL overrides the
                           default email address.
-  --enable-testapps=foo,bar or all
+  --enable-testapps=foo bar or all
                           enable rebuilding of large external apps for testing
                           <sdt.h> markers
 
@@ -2333,8 +2333,8 @@ if test "${enable_testapps+set}" = set; then
   enableval=$enable_testapps;
 fi
 
-{ $as_echo "$as_me:$LINENO: Will test ${enable_testapps-none} from: $apps" >&5
-$as_echo "$as_me: Will test ${enable_testapps-none} from: $apps" >&6;}
+{ $as_echo "$as_me:$LINENO: Will test ${enable_testapps-no} apps from: $apps" >&5
+$as_echo "$as_me: Will test ${enable_testapps-no} apps from: $apps" >&6;}
 
 
 ac_config_files="$ac_config_files Makefile"

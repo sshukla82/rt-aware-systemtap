@@ -209,7 +209,7 @@ Configuration file allows us
 
 4.1.11 ALLOW_CACHEONLY
  If this is set 'yes', systemtap initscript list up cache-only scripts too.
- *NOTE*: systemtap initscript will load unexpected obsolate caches with this
+ *NOTE*: systemtap initscript will load unexpected obsolete caches with this
  option. You should check cache directory before enabling this option.
  (default: no)
 

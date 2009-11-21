@@ -135,6 +135,16 @@
 !Itapset/timestamp.stp
   </chapter>
 
+  <chapter id="ctime.stp">
+    <title>Time string utility function</title>
+    <para>
+      Utility function to turn seconds since the epoch (as returned by
+      the timestamp function gettimeofday_s()) into a human readable
+      date/time string.
+    </para>
+!Itapset/ctime.stp
+  </chapter>
+
   <chapter id="memory_stp">
     <title>Memory Tapset</title>
  <para>
@@ -241,5 +251,23 @@
       These functions deal with random number generation.
     </para>
 !Itapset/random.stp
+    </chapter>
+  <chapter id="conversions.stp">
+    <title>String and data retrieving functions Tapset</title>
+    <para>
+      Functions to retrieve strings and other primitive types from
+      the kernel or a user space programs based on addresses. All
+      strings are of a maximum length given by MAXSTRINGLEN.
+    </para>
+!Itapset/conversions.stp
+    </chapter>
+  <chapter id="ansi.stp">
+    <title>Utility functions for using ansi control chars in logs</title>
+    <para>
+      Utility functions for logging using ansi control characters. This
+      lets you manipulate the cursor position and character color output
+      and attributes of log messages.
+    </para>
+!Itapset/ansi.stp
     </chapter>
 </book>

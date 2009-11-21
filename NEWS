@@ -1,5 +1,13 @@
 * What's new
 
+- The stap-server initscript is available. This initscript allows you to
+  start systemtap compile servers as a system service and to manage
+  these servers as a group or individually.
+  See initscript/README.stap-server for details.
+
+- Any output line that starts with "ERROR", as in error("foo"), will
+  promote a "Pass 5: run failed", and the return code is 1.
+
 - Systemtap now warns about global variables being referenced from other
   script files.  This aims to protect against unintended local-vs-global 
   namespace collisions such as:
@@ -393,7 +401,7 @@
 - Systemtap initscript is available. This initscript allows you to run
   systemtap scripts as system services (in flight recorder mode) and
   control those scripts individually.
-  See README.initscript for details.
+  See README.systemtap for details.
 
 - The stap "-r DIR" option may be used to identify a hand-made kernel
   build directory.  The tool determines the appropriate release string
