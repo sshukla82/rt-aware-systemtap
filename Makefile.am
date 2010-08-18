@@ -24,7 +24,7 @@ pkglibexec_SCRIPTS = stap-env
 oldinclude_HEADERS = includes/sys/sdt.h
 
 if BUILD_TRANSLATOR
-bin_PROGRAMS += stap 
+bin_PROGRAMS += stap
 man_MANS += stap.1
 bin_SCRIPTS += dtrace
 
@@ -32,7 +32,7 @@ if HAVE_NSS
 man_MANS += stap-authorize-signing-cert.8
 bin_SCRIPTS += stap-authorize-signing-cert
 pkglibexec_PROGRAMS += stap-sign-module
-pkglibexec_SCRIPTS += stap-gen-cert stap-authorize-cert 
+pkglibexec_SCRIPTS += stap-gen-cert stap-authorize-cert
 
 if BUILD_SERVER
 man_MANS += stap-client.8 stap-server.8 stap-authorize-server-cert.8
@@ -51,6 +51,7 @@ stap_SOURCES = main.cxx session.cxx \
 	tapset-perfmon.cxx tapset-mark.cxx tapset-itrace.cxx \
 	tapset-utrace.cxx task_finder.cxx dwflpp.cxx rpm_finder.cxx \
 	setupdwfl.cxx csclient.cxx
+noinst_HEADERS = sdt-compat.h
 stap_LDADD = @stap_LIBS@ @sqlite3_LIBS@
 stap_DEPENDENCIES =
 endif
@@ -185,7 +186,7 @@ stapio_LDADD = -lpthread
 stap_merge_SOURCES = runtime/staprun/stap_merge.c
 stap_merge_CFLAGS = $(AM_CFLAGS) @PIECFLAGS@
 stap_merge_LDFLAGS = $(AM_LDFLAGS) @PIECFLAGS@
-stap_merge_LDADD = 
+stap_merge_LDADD =
 
 install-exec-hook:
 	if [ `id -u` -eq 0 ]; then chmod 04111 "$(DESTDIR)$(bindir)/staprun"; fi
