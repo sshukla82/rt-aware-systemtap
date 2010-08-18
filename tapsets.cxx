@@ -23,6 +23,7 @@
 #include "dwflpp.h"
 #include "setupdwfl.h"
 
+#include "sys/sdt.h"
 #include "sdt-compat.h"
 
 #include <cstdlib>
@@ -3701,12 +3702,12 @@ dwarf_derived_probe::dwarf_derived_probe(const string& funcname,
     has_process (q.has_process),
     has_return (q.has_return),
     has_maxactive (q.has_maxactive),
-    has_library (q.has_library), 
+    has_library (q.has_library),
     maxactive_val (q.maxactive_val),
     user_path (q.user_path),
     user_lib (q.user_lib),
     access_vars(false),
-    saved_longs(0), saved_strings(0), 
+    saved_longs(0), saved_strings(0),
     entry_handler(0)
 {
   if (user_lib.size() != 0)
@@ -4585,7 +4586,7 @@ struct sdt_uprobe_var_expanding_visitor: public var_expanding_visitor
       dwarf_regs["%r21"] = 21; dwarf_regs["%r22"] = 22; dwarf_regs["%r23"] = 23;
       dwarf_regs["%r24"] = 24; dwarf_regs["%r25"] = 25; dwarf_regs["%r26"] = 26;
       dwarf_regs["%r27"] = 27; dwarf_regs["%r28"] = 28; dwarf_regs["%r29"] = 29;
-      dwarf_regs["%r30"] = 30; dwarf_regs["%r31"] = 31; 
+      dwarf_regs["%r30"] = 30; dwarf_regs["%r31"] = 31;
       // PR11821: unadorned register "names" without -mregnames
       dwarf_regs["0"] = 0; dwarf_regs["1"] = 1; dwarf_regs["2"] = 2;
       dwarf_regs["3"] = 3; dwarf_regs["4"] = 4; dwarf_regs["5"] = 5;
@@ -4597,7 +4598,7 @@ struct sdt_uprobe_var_expanding_visitor: public var_expanding_visitor
       dwarf_regs["21"] = 21; dwarf_regs["22"] = 22; dwarf_regs["23"] = 23;
       dwarf_regs["24"] = 24; dwarf_regs["25"] = 25; dwarf_regs["26"] = 26;
       dwarf_regs["27"] = 27; dwarf_regs["28"] = 28; dwarf_regs["29"] = 29;
-      dwarf_regs["30"] = 30; dwarf_regs["31"] = 31; 
+      dwarf_regs["30"] = 30; dwarf_regs["31"] = 31;
     }
     else if (arg_count) {
       /* permit this case; just fall back to dwarf */
@@ -4672,7 +4673,7 @@ sdt_uprobe_var_expanding_visitor::visit_target_symbol (target_symbol *e)
 
       assert (arg_tokens.size() >= argno);
       string asmarg = arg_tokens[argno-1];   // $arg1 => arg_tokens[0]
-      
+
       // Now we try to parse this thing, which is an assembler operand
       // expression.  If we can't, we warn, back down to need_debug_info
       // and hope for the best.
@@ -4737,9 +4738,9 @@ sdt_uprobe_var_expanding_visitor::visit_target_symbol (target_symbol *e)
             }
           // invalid register name, fall through
         }
-      
+
       // test for OFFSET(REGISTER)
-      // NB: Despire PR11821, we can use regnames here, since the parentheses 
+      // NB: Despire PR11821, we can use regnames here, since the parentheses
       // make things unambiguous.
       rc = regexp_match (asmarg, string("^([-]?[0-9]*)[(](")+regnames+string(")[)]$"), matches);
       if (! rc)
@@ -4764,7 +4765,7 @@ sdt_uprobe_var_expanding_visitor::visit_target_symbol (target_symbol *e)
               if (dwarf_regs.find (regname) != dwarf_regs.end()) // known register
                 {
                   // synthesize user_long(%{fetch_register(R)%} + D)
-                  
+
                   embedded_expr *get_arg1 = new embedded_expr;
                   get_arg1->tok = e->tok;
                   get_arg1->code = string("/* unprivileged */ /* pure */")
@@ -4773,21 +4774,21 @@ sdt_uprobe_var_expanding_visitor::visit_target_symbol (target_symbol *e)
                        : string("k_fetch_register("))
                     + lex_cast(dwarf_regs[regname]) + string(")");
                   // XXX: may we ever need to cast that to a narrower type?
-                  
+
                   literal_number* inc = new literal_number(disp);
                   inc->tok = e->tok;
-                  
+
                   binary_expression *be = new binary_expression;
                   be->tok = e->tok;
                   be->left = get_arg1;
                   be->op = "+";
                   be->right = inc;
-                  
+
                   functioncall *fc = new functioncall;
                   fc->function = "user_long";
                   fc->tok = e->tok;
                   fc->args.push_back(be);
-                  
+
                   argexpr = fc;
                   goto matched;
                 }
@@ -4802,13 +4803,13 @@ sdt_uprobe_var_expanding_visitor::visit_target_symbol (target_symbol *e)
       need_debug_info = true;
       provide (e);
       return;
-      
+
     matched:
       assert (argexpr != 0);
-      
-      if (session.verbose > 2) 
+
+      if (session.verbose > 2)
         clog << "mapped asm operand " << asmarg << " to " << *argexpr << endl;
-      
+
       if (e->components.empty()) // We have a scalar
         {
           if (e->addressof)
@@ -4828,7 +4829,7 @@ sdt_uprobe_var_expanding_visitor::visit_target_symbol (target_symbol *e)
           cast->visit(this);
           return;
         }
-      
+
       /* NOTREACHED */
     }
   catch (const semantic_error &er)
@@ -4904,7 +4905,7 @@ sdt_kprobe_var_expanding_visitor::visit_target_symbol (target_symbol *e)
 	  get_arg1->function = "pointer_arg";
 	  get_arg1->tok = e->tok;
 	  // arg3 is the pointer to a struct of arguments
-	  literal_number* num = new literal_number(3); 
+	  literal_number* num = new literal_number(3);
 	  num->tok = e->tok;
 	  get_arg1->args.push_back(num);
 
@@ -5082,7 +5083,7 @@ sdt_query::handle_query_module()
 	  svv.replace (new_base->body);
 	  need_debug_info = svv.need_debug_info;
 	}
-      
+
       unsigned i = results.size();
 
       if (have_kprobe())
@@ -5562,7 +5563,7 @@ dwarf_builder::build(systemtap_session & sess,
                   break;
                 }
             }
-          
+
           sess.print_warning ("cannot probe .return of " + lex_cast(i_n_r) + " inlined function(s):" + quicklist);
           // There will be also a "no matches" semantic error generated.
         }
@@ -6098,7 +6099,7 @@ uprobe_derived_probe_group::emit_module_decls (systemtap_session& s)
           s.op->line() << " .pathname=" << lex_cast_qstring(p->module) << ", ";
           s.op->line() << " },";
         }
-      else 
+      else
         ; // skip it in this pass, already have a suitable stap_uprobe_tf slot for it.
     }
   s.op->newline(-1) << "};";
@@ -6205,7 +6206,7 @@ uprobe_derived_probe_group::emit_module_init (systemtap_session& s)
   // Set up the task_finders
   s.op->newline() << "for (i=0; i<sizeof(stap_uprobe_finders)/sizeof(stap_uprobe_finders[0]); i++) {";
   s.op->newline(1) << "struct stap_uprobe_tf *stf = & stap_uprobe_finders[i];";
-  s.op->newline() << "probe_point = stf->pathname;"; // for error messages; XXX: would prefer pp() or something better 
+  s.op->newline() << "probe_point = stf->pathname;"; // for error messages; XXX: would prefer pp() or something better
   s.op->newline() << "rc = stap_register_task_finder_target (& stf->finder);";
 
   // NB: if (rc), there is no need (XXX: nor any way) to clean up any
@@ -6806,7 +6807,7 @@ kprobe_builder::build(systemtap_session & sess,
     path = find_executable (path);
   if (has_library)
     library = find_executable (library, "LD_LIBRARY_PATH");
- 
+
   if (has_function_str)
     {
       if (has_module_str)
@@ -6957,7 +6958,7 @@ void hwbkpt_derived_probe_group::enroll (hwbkpt_derived_probe* p, systemtap_sess
   else if (s.architecture == "s390")
     max_hwbkpt_probes_by_arch = 1;
 
-  if (hwbkpt_probes.size() >= max_hwbkpt_probes_by_arch) 
+  if (hwbkpt_probes.size() >= max_hwbkpt_probes_by_arch)
     if (! s.suppress_warnings)
       s.print_warning ("Too many hardware breakpoint probes requested for " + s.architecture
                        + "(" + lex_cast(hwbkpt_probes.size()) +
@@ -7075,7 +7076,7 @@ hwbkpt_derived_probe_group::emit_module_init (systemtap_session& s)
   s.op->newline() << "hp->bp_type = sdp->atype;";
 
   // On x86 & x86-64, hp->bp_len is not just a number but a macro/enum (!?!).
-  if (s.architecture == "i386" || s.architecture == "x86_64" ) 
+  if (s.architecture == "i386" || s.architecture == "x86_64" )
     {
       s.op->newline() << "switch(sdp->len) {";
       s.op->newline() << "case 1:";
