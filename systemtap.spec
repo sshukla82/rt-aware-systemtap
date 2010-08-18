@@ -485,6 +485,7 @@ exit 0
 %defattr(-,root,root)
 %{_bindir}/dtrace
 %{_includedir}/sys/sdt.h
+%{_includedir}/sys/sdt-config.h
 %doc README AUTHORS NEWS COPYING
 
 %files initscript

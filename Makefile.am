@@ -7,7 +7,11 @@ AUTOMAKE_OPTIONS = no-dist foreign
 pkglibexecdir = ${libexecdir}/${PACKAGE}
 oldincludedir = ${includedir}/sys
 
-AM_CPPFLAGS = -DBINDIR='"$(bindir)"' -DSYSCONFDIR='"$(sysconfdir)"' -DPKGDATADIR='"${pkgdatadir}"' -DPKGLIBDIR='"$(pkglibexecdir)"' -I$(srcdir)/includes
+AM_CPPFLAGS = -DBINDIR='"$(bindir)"' \
+	      -DSYSCONFDIR='"$(sysconfdir)"' \
+	      -DPKGDATADIR='"${pkgdatadir}"' \
+	      -DPKGLIBDIR='"$(pkglibexecdir)"' \
+	      -I$(srcdir)/includes -I$(builddir)/includes/sys
 
 AM_CFLAGS = -D_GNU_SOURCE -fexceptions -Wall -Werror -Wunused -Wformat=2 -W
 AM_CXXFLAGS = -Wall -Werror
@@ -21,7 +25,7 @@ bin_PROGRAMS = staprun stap-merge
 bin_SCRIPTS = stap-report
 pkglibexec_PROGRAMS = stapio
 pkglibexec_SCRIPTS = stap-env
-oldinclude_HEADERS = includes/sys/sdt.h
+oldinclude_HEADERS = includes/sys/sdt.h includes/sys/sdt-config.h
 
 if BUILD_TRANSLATOR
 bin_PROGRAMS += stap
