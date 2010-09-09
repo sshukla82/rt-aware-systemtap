@@ -4797,8 +4797,8 @@ sdt_uprobe_var_expanding_visitor::visit_target_symbol (target_symbol *e)
                   functioncall *fc = new functioncall;
 		  switch (precision)
 		    {
-		    case 4: fc->function = "user_uint"; break;
-		    case -4: fc->function = "user_int"; break;
+		    case 4: case -4:
+		      fc->function = "user_int"; break;
 		    case 8: case -8:
 		      fc->function = "user_long"; break;
 		    default: fc->function = "user_long"; break;
