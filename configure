@@ -612,6 +612,9 @@ STAP_PREFIX
 STAP_EXTRA_VERSION
 LOCALEDIR
 ENABLE_NLS
+have_byteman_install
+have_byteman_submit
+have_java
 HAVE_SELINUX_FALSE
 HAVE_SELINUX_TRUE
 selinux_LIBS
@@ -676,6 +679,7 @@ LIBINTL
 INTLLIBS
 LTLIBICONV
 LIBICONV
+INTL_MACOSX_LIBS
 host_os
 host_vendor
 host_cpu
@@ -820,6 +824,7 @@ with_rpm
 with_elfutils
 with_dyninst
 with_selinux
+with_java
 with_extra_version
 '
       ac_precious_vars='build_alias
@@ -1513,6 +1518,7 @@ Optional Packages:
   --with-dyninst=DIRECTORY
                           find dyninst headers/libraries in DIRECTORY
   --without-selinux       Do not use libselinux even if present
+  --with-helper           Specify the directory containing libHelperSDT.so
   --with-extra-version=STRING
                           Add STRING to stap -V version
 
@@ -7924,6 +7930,81 @@ fi
 
 
 
+    { $as_echo "$as_me:${as_lineno-$LINENO}: checking for CFPreferencesCopyAppValue" >&5
+$as_echo_n "checking for CFPreferencesCopyAppValue... " >&6; }
+if ${gt_cv_func_CFPreferencesCopyAppValue+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  gt_save_LIBS="$LIBS"
+     LIBS="$LIBS -Wl,-framework -Wl,CoreFoundation"
+     cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+#include <CoreFoundation/CFPreferences.h>
+int
+main ()
+{
+CFPreferencesCopyAppValue(NULL, NULL)
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"; then :
+  gt_cv_func_CFPreferencesCopyAppValue=yes
+else
+  gt_cv_func_CFPreferencesCopyAppValue=no
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+     LIBS="$gt_save_LIBS"
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $gt_cv_func_CFPreferencesCopyAppValue" >&5
+$as_echo "$gt_cv_func_CFPreferencesCopyAppValue" >&6; }
+  if test $gt_cv_func_CFPreferencesCopyAppValue = yes; then
+
+$as_echo "#define HAVE_CFPREFERENCESCOPYAPPVALUE 1" >>confdefs.h
+
+  fi
+    { $as_echo "$as_me:${as_lineno-$LINENO}: checking for CFLocaleCopyCurrent" >&5
+$as_echo_n "checking for CFLocaleCopyCurrent... " >&6; }
+if ${gt_cv_func_CFLocaleCopyCurrent+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  gt_save_LIBS="$LIBS"
+     LIBS="$LIBS -Wl,-framework -Wl,CoreFoundation"
+     cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+#include <CoreFoundation/CFLocale.h>
+int
+main ()
+{
+CFLocaleCopyCurrent();
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"; then :
+  gt_cv_func_CFLocaleCopyCurrent=yes
+else
+  gt_cv_func_CFLocaleCopyCurrent=no
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+     LIBS="$gt_save_LIBS"
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $gt_cv_func_CFLocaleCopyCurrent" >&5
+$as_echo "$gt_cv_func_CFLocaleCopyCurrent" >&6; }
+  if test $gt_cv_func_CFLocaleCopyCurrent = yes; then
+
+$as_echo "#define HAVE_CFLOCALECOPYCURRENT 1" >>confdefs.h
+
+  fi
+  INTL_MACOSX_LIBS=
+  if test $gt_cv_func_CFPreferencesCopyAppValue = yes || test $gt_cv_func_CFLocaleCopyCurrent = yes; then
+    INTL_MACOSX_LIBS="-Wl,-framework -Wl,CoreFoundation"
+  fi
+
+
+
 
 
 
@@ -10766,6 +10847,150 @@ else
   HAVE_SELINUX_TRUE='#'
   HAVE_SELINUX_FALSE=
 fi
+
+
+# Extract the first word of "java", so it can be a program name with args.
+set dummy java; ac_word=$2
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
+$as_echo_n "checking for $ac_word... " >&6; }
+if ${ac_cv_prog_have_java+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  if test -n "$have_java"; then
+  ac_cv_prog_have_java="$have_java" # Let the user override the test.
+else
+as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  test -z "$as_dir" && as_dir=.
+    for ac_exec_ext in '' $ac_executable_extensions; do
+  if { test -f "$as_dir/$ac_word$ac_exec_ext" && $as_test_x "$as_dir/$ac_word$ac_exec_ext"; }; then
+    ac_cv_prog_have_java="yes"
+    $as_echo "$as_me:${as_lineno-$LINENO}: found $as_dir/$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+  done
+IFS=$as_save_IFS
+
+  test -z "$ac_cv_prog_have_java" && ac_cv_prog_have_java="no"
+fi
+fi
+have_java=$ac_cv_prog_have_java
+if test -n "$have_java"; then
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: $have_java" >&5
+$as_echo "$have_java" >&6; }
+else
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+fi
+
+
+# Extract the first word of "bmsubmit.sh", so it can be a program name with args.
+set dummy bmsubmit.sh; ac_word=$2
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
+$as_echo_n "checking for $ac_word... " >&6; }
+if ${ac_cv_prog_have_byteman_submit+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  if test -n "$have_byteman_submit"; then
+  ac_cv_prog_have_byteman_submit="$have_byteman_submit" # Let the user override the test.
+else
+as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  test -z "$as_dir" && as_dir=.
+    for ac_exec_ext in '' $ac_executable_extensions; do
+  if { test -f "$as_dir/$ac_word$ac_exec_ext" && $as_test_x "$as_dir/$ac_word$ac_exec_ext"; }; then
+    ac_cv_prog_have_byteman_submit="yes"
+    $as_echo "$as_me:${as_lineno-$LINENO}: found $as_dir/$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+  done
+IFS=$as_save_IFS
+
+  test -z "$ac_cv_prog_have_byteman_submit" && ac_cv_prog_have_byteman_submit="no"
+fi
+fi
+have_byteman_submit=$ac_cv_prog_have_byteman_submit
+if test -n "$have_byteman_submit"; then
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: $have_byteman_submit" >&5
+$as_echo "$have_byteman_submit" >&6; }
+else
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+fi
+
+
+# Extract the first word of "bminstall.sh", so it can be a program name with args.
+set dummy bminstall.sh; ac_word=$2
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
+$as_echo_n "checking for $ac_word... " >&6; }
+if ${ac_cv_prog_have_byteman_install+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  if test -n "$have_byteman_install"; then
+  ac_cv_prog_have_byteman_install="$have_byteman_install" # Let the user override the test.
+else
+as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  test -z "$as_dir" && as_dir=.
+    for ac_exec_ext in '' $ac_executable_extensions; do
+  if { test -f "$as_dir/$ac_word$ac_exec_ext" && $as_test_x "$as_dir/$ac_word$ac_exec_ext"; }; then
+    ac_cv_prog_have_byteman_install="yes"
+    $as_echo "$as_me:${as_lineno-$LINENO}: found $as_dir/$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+  done
+IFS=$as_save_IFS
+
+  test -z "$ac_cv_prog_have_byteman_install" && ac_cv_prog_have_byteman_install="no"
+fi
+fi
+have_byteman_install=$ac_cv_prog_have_byteman_install
+if test -n "$have_byteman_install"; then
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: $have_byteman_install" >&5
+$as_echo "$have_byteman_install" >&6; }
+else
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+fi
+
+
+if test -n "$have_java" -a "$have_byteman_submit" -a "$have_byteman_install" != no; then
+
+# Check whether --with-java was given.
+if test "${with_java+set}" = set; then :
+  withval=$with_java;
+fi
+
+if test "x$with_helper" != "xno"; then :
+
+           have_helper="$with_helper"
+           { $as_echo "$as_me:${as_lineno-$LINENO}: Adding helper location $have_helper" >&5
+$as_echo "$as_me: Adding helper location $have_helper" >&6;}
+else
+
+           have_helper=""
+fi
+if test -n "$with_helper" -a "$have_helper" != "no"; then
+
+cat >>confdefs.h <<_ACEOF
+#define HAVE_HELPER "$have_helper"
+_ACEOF
+
+fi
+else
+{ $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: will not run per-method java probing, missing byteman or java requirements" >&5
+$as_echo "$as_me: WARNING: will not run per-method java probing, missing byteman or java requirements" >&2;}
+fi
+
 
 
 ENABLE_NLS="$USE_NLS"
