@@ -612,6 +612,8 @@ STAP_PREFIX
 STAP_EXTRA_VERSION
 LOCALEDIR
 ENABLE_NLS
+HAVE_HELPER_FALSE
+HAVE_HELPER_TRUE
 have_byteman_install
 have_byteman_submit
 have_java
@@ -679,7 +681,6 @@ LIBINTL
 INTLLIBS
 LTLIBICONV
 LIBICONV
-INTL_MACOSX_LIBS
 host_os
 host_vendor
 host_cpu
@@ -7930,81 +7931,6 @@ fi
 
 
 
-    { $as_echo "$as_me:${as_lineno-$LINENO}: checking for CFPreferencesCopyAppValue" >&5
-$as_echo_n "checking for CFPreferencesCopyAppValue... " >&6; }
-if ${gt_cv_func_CFPreferencesCopyAppValue+:} false; then :
-  $as_echo_n "(cached) " >&6
-else
-  gt_save_LIBS="$LIBS"
-     LIBS="$LIBS -Wl,-framework -Wl,CoreFoundation"
-     cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
-#include <CoreFoundation/CFPreferences.h>
-int
-main ()
-{
-CFPreferencesCopyAppValue(NULL, NULL)
-  ;
-  return 0;
-}
-_ACEOF
-if ac_fn_c_try_link "$LINENO"; then :
-  gt_cv_func_CFPreferencesCopyAppValue=yes
-else
-  gt_cv_func_CFPreferencesCopyAppValue=no
-fi
-rm -f core conftest.err conftest.$ac_objext \
-    conftest$ac_exeext conftest.$ac_ext
-     LIBS="$gt_save_LIBS"
-fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $gt_cv_func_CFPreferencesCopyAppValue" >&5
-$as_echo "$gt_cv_func_CFPreferencesCopyAppValue" >&6; }
-  if test $gt_cv_func_CFPreferencesCopyAppValue = yes; then
-
-$as_echo "#define HAVE_CFPREFERENCESCOPYAPPVALUE 1" >>confdefs.h
-
-  fi
-    { $as_echo "$as_me:${as_lineno-$LINENO}: checking for CFLocaleCopyCurrent" >&5
-$as_echo_n "checking for CFLocaleCopyCurrent... " >&6; }
-if ${gt_cv_func_CFLocaleCopyCurrent+:} false; then :
-  $as_echo_n "(cached) " >&6
-else
-  gt_save_LIBS="$LIBS"
-     LIBS="$LIBS -Wl,-framework -Wl,CoreFoundation"
-     cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
-#include <CoreFoundation/CFLocale.h>
-int
-main ()
-{
-CFLocaleCopyCurrent();
-  ;
-  return 0;
-}
-_ACEOF
-if ac_fn_c_try_link "$LINENO"; then :
-  gt_cv_func_CFLocaleCopyCurrent=yes
-else
-  gt_cv_func_CFLocaleCopyCurrent=no
-fi
-rm -f core conftest.err conftest.$ac_objext \
-    conftest$ac_exeext conftest.$ac_ext
-     LIBS="$gt_save_LIBS"
-fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $gt_cv_func_CFLocaleCopyCurrent" >&5
-$as_echo "$gt_cv_func_CFLocaleCopyCurrent" >&6; }
-  if test $gt_cv_func_CFLocaleCopyCurrent = yes; then
-
-$as_echo "#define HAVE_CFLOCALECOPYCURRENT 1" >>confdefs.h
-
-  fi
-  INTL_MACOSX_LIBS=
-  if test $gt_cv_func_CFPreferencesCopyAppValue = yes || test $gt_cv_func_CFLocaleCopyCurrent = yes; then
-    INTL_MACOSX_LIBS="-Wl,-framework -Wl,CoreFoundation"
-  fi
-
-
-
 
 
 
@@ -10985,6 +10911,14 @@ cat >>confdefs.h <<_ACEOF
 #define HAVE_HELPER "$have_helper"
 _ACEOF
 
+ if test "$have_helper" != "no"; then
+  HAVE_HELPER_TRUE=
+  HAVE_HELPER_FALSE='#'
+else
+  HAVE_HELPER_TRUE='#'
+  HAVE_HELPER_FALSE=
+fi
+
 fi
 else
 { $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: will not run per-method java probing, missing byteman or java requirements" >&5
@@ -11049,6 +10983,8 @@ fi
 ac_config_files="$ac_config_files dtrace"
 
 ac_config_files="$ac_config_files stapdyn/Makefile"
+
+ac_config_files="$ac_config_files java/Makefile"
 
 ac_config_files="$ac_config_files staprun/Makefile"
 
@@ -11261,6 +11197,10 @@ Usually this means the macro was only invoked conditionally." "$LINENO" 5
 fi
 if test -z "${HAVE_SELINUX_TRUE}" && test -z "${HAVE_SELINUX_FALSE}"; then
   as_fn_error $? "conditional \"HAVE_SELINUX\" was never defined.
+Usually this means the macro was only invoked conditionally." "$LINENO" 5
+fi
+if test -z "${HAVE_HELPER_TRUE}" && test -z "${HAVE_HELPER_FALSE}"; then
+  as_fn_error $? "conditional \"HAVE_HELPER\" was never defined.
 Usually this means the macro was only invoked conditionally." "$LINENO" 5
 fi
 
@@ -11892,6 +11832,7 @@ do
     "run-stap") CONFIG_FILES="$CONFIG_FILES run-stap" ;;
     "dtrace") CONFIG_FILES="$CONFIG_FILES dtrace" ;;
     "stapdyn/Makefile") CONFIG_FILES="$CONFIG_FILES stapdyn/Makefile" ;;
+    "java/Makefile") CONFIG_FILES="$CONFIG_FILES java/Makefile" ;;
     "staprun/Makefile") CONFIG_FILES="$CONFIG_FILES staprun/Makefile" ;;
     "staprun/run-staprun") CONFIG_FILES="$CONFIG_FILES staprun/run-staprun" ;;
     "re2c-migrate/Makefile") CONFIG_FILES="$CONFIG_FILES re2c-migrate/Makefile" ;;
